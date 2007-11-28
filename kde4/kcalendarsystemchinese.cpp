@@ -1,28 +1,33 @@
 /*
-    Copyright (c) 2003 Hans Petter Bieker <bieker@kde.org>
-    Copyright (c) 2007 John Layt <john@layt.net>
-        Calendar conversion routines based on Hdate v6, by Amos
-        Shapir 1978 (rev. 1985, 1992)
-
+    Copyright (c) 2007 Liang Qi <cavendish.qi@gmail.com>
+        Calendar conversion routines based on:
+        1. ccal v2.4 by Zhuo Meng <zhuo@thunder.cwru.edu>
+        2. NOVAS-C v2.0 (1 Nov 98) by
+               U. S. Naval Observatory
+               Astronomical Applications Dept.
+               3450 Massachusetts Ave., NW
+               Washington, DC  20392-5420
+        3. Lunar Outreach Services by Christopher Osburn(1996)
+ 
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Library General Public
     License as published by the Free Software Foundation; either
     version 2 of the License, or (at your option) any later version.
-
+ 
     This library is distributed in the hope that it will be useful,
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
     Library General Public License for more details.
-
+ 
     You should have received a copy of the GNU Library General Public License
     along with this library; see the file COPYING.LIB.  If not, write to
     the Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
     Boston, MA 02110-1301, USA.
 */
 
-// Derived hebrew kde calendar class
+// Derived chinese kde calendar class
 
-#include "kcalendarsystemhebrew.h"
+#include "kcalendarsystemchinese.h"
 
 #include "kdebug.h"
 #include "klocale.h"
@@ -30,460 +35,2478 @@
 #include <QtCore/QDate>
 #include <QtCore/QCharRef>
 
+#include <time.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <string.h>
+#include <ctype.h>
+#include <vector>
+
+using namespace std;
+
+typedef std::vector<double> vdouble;
+
 //===========================================================================
-//  This section holds the old Hebrew <=> jd <=> Hebrew conversion code
-//  This is here to allow comparison testing to confirm old and new match
+// novas.h
+//
+// NOVAS-C Version 2.0 (1 Nov 98)
+// Header file for novas.c
 //===========================================================================
-
-static int hebrewDaysElapsed( int y );
-
-static QString num2heb( int num, bool includeMillenium );
-
-class h_date
-{
-public:
-    int hd_day;
-    int hd_mon;
-    int hd_year;
-    int hd_dw;
-    int hd_flg;
-};
 
 /*
- * compute general date structure from hebrew date
- */
-static class h_date * hebrewToGregorian( int y, int m, int d )
-{
-    static class h_date h;
-    int s;
+   Define "origin" constants.
+*/
 
-    y -= 3744;
-    s = hebrewDaysElapsed( y );
-    d += s;
-    s = hebrewDaysElapsed( y + 1 ) - s;    /* length of year */
-
-    if ( s > 365 && m > 6 ) {
-        --m;
-        d += 30;
-    }
-    d += ( 59 * ( m - 1 ) + 1 ) / 2;  /* regular months */
-    /* special cases */
-    if ( s % 10 > 4 && m > 2 ) {  /* long Heshvan */
-        d++;
-    }
-    if ( s % 10 < 4 && m > 3 ) {  /* short Kislev */
-        d--;
-    }
-    // ### HPB: Broken in leap years
-    //if (s > 365 && m > 6)  /* leap year */
-    //  d += 30;
-    d -= 6002;
-
-    y = ( d + 36525 ) * 4 / 146097 - 1;
-    d -= y / 4 * 146097 + ( y % 4 ) * 36524;
-    y *= 100;
-
-    /* compute year */
-    s = ( d + 366 )*4 / 1461 - 1;
-    d -= s / 4*1461 + ( s % 4 )*365;
-    y += s;
-    /* compute month */
-    m = ( d + 245 )*12 / 367 - 7;
-    d -= m*367 / 12 - 30;
-    if ( ++m >= 12 ) {
-        m -= 12;
-        y++;
-    }
-    h.hd_day = d;
-    h.hd_mon = m;
-    h.hd_year = y;
-    return( &h );
-}
+   #define BARYC  0
+   #define HELIOC 1
 
 /*
- * compute date structure from no. of days since 1 Tishrei 3744
- */
-static class h_date * gregorianToHebrew( int y, int m, int d )
+   Function prototypes
+*/
+
+static    void earthtilt (double tjd,
+                   double *mobl, double *tobl, double *eqeq,
+                   double *psi, double *eps);
+
+static    short int aberration (double *pos, double *vel, double lighttime,
+                         double *pos2);
+
+static    void precession (double tjd1, double *pos, double tjd2,
+                    double *pos2);
+
+static    short int nutate (double tjd, short int fn1, double *pos,
+                     double *pos2);
+
+static    short int nutation_angles (double tdbtime,
+                              double *longnutation,
+                              double *obliqnutation);
+
+static    void fund_args (double t,
+                   double a[5]);
+
+static    void tdb2tdt (double tdb,
+                 double *tdtjd, double *secdiff);
+
+static    void radec2vector (double ra, double dec, double dist,
+                      double *vector);
+
+static    short int solarsystem (double tjd, short int body, short int origin, 
+                          double *pos, double *vel);
+
+static    double julian_date (short int year, short int month, short int day,
+                       double hour);
+
+static    void cal_date (double tjd,
+                  short int *year, short int *month, short int *day,
+                  double *hour);
+
+//===========================================================================
+//  End of novas.h
+//===========================================================================
+
+//===========================================================================
+// Copyright 1996, Christopher Osburn, Lunar Outreach Services,
+//
+// moon.h
+//
+// Headers and function defs for moon phase routines
+//===========================================================================
+
+static double moonphasebylunation(int lun, int phi);  /* moonphase.c */
+static double moonphase(double k, int phi);  /* moonphase.c */
+static double torad(double x);              /* misc.c      */
+
+//===========================================================================
+//  End of moon.h
+//===========================================================================
+
+//===========================================================================
+// Copyright 1996, Christopher Osburn, Lunar Outreach Services,
+//
+// misc.cpp
+// 1996/02/11
+//
+// Miscellaneous routines for moon phase programs
+//===========================================================================
+
+static double torad(double x)
+/* convert x to radians */
 {
-    static class h_date h;
-    int s;
-
-    if ( ( m -= 2 ) <= 0 ) {
-        m += 12;
-        y--;
-    }
-    /* no. of days, Julian calendar */
-    d += 365*y + y / 4 + 367*m / 12 + 5968;
-    /* Gregorian calendar */
-    d -= y / 100 - y / 400 - 2;
-    h.hd_dw = ( d + 1 ) % 7;
-
-    /* compute the year */
-    y += 16;
-    s = hebrewDaysElapsed( y );
-    m = hebrewDaysElapsed( y + 1 );
-    while( d >= m ) {  /* computed year was underestimated */
-        s = m;
-        y++;
-        m = hebrewDaysElapsed( y + 1 );
-    }
-    d -= s;
-    s = m - s;  /* size of current year */
-    y += 3744;
-
-    h.hd_flg = s % 10 - 4;
-
-    /* compute day and month */
-    if ( d >= s - 236 ) {  /* last 8 months are regular */
-        d -= s - 236;
-        m = d * 2 / 59;
-        d -= ( m * 59 + 1 ) / 2;
-        m += 4;
-        if ( s > 365 && m <= 5 ) {  /* Adar of Meuberet */
-            m += 8;
-        }
-    } else {
-        /* first 4 months have 117-119 days */
-        s = 114 + s % 10;
-        m = d * 4 / s;
-        d -= ( m * s + 3 ) / 4;
-    }
-
-    h.hd_day = d;
-    h.hd_mon = m;
-    h.hd_year = y;
-    return( &h );
+  x = fmod(x, 360.0); /* normalize the angle */
+  return ((x) * 0.01745329251994329576);
+                    /* and return the result */
 }
 
-static QString num2heb( int num, bool includeMillenium )
+//===========================================================================
+//  End of misc.cpp
+//===========================================================================
+
+//===========================================================================
+// Copyright 1996, Christopher Osburn, Lunar Outreach Services,
+//
+// moonphase.cpp
+// 1996/02/11
+//
+// calculate phase of the moon per Meeus Ch. 47
+//
+// Parameters:
+//    int lun:  phase parameter.  This is the number of lunations
+//              since the New Moon of 2000 January 6.
+//
+//    int phi:  another phase parameter, selecting the phase of the
+//              moon.  0 = New, 1 = First Qtr, 2 = Full, 3 = Last Qtr
+//
+// Return:  Apparent JD of the needed phase
+//===========================================================================
+
+static double moonphase(double k, int phi)
 {
-    const QChar decade[] = {
-                               0x05D8, 0x05D9, 0x05DB, 0x05DC, 0x05DE,
-                               0x05E0, 0x05E1, 0x05E2, 0x05E4, 0x05E6
-                           };
-    QString result;
+  int i;                       /* iterator to be named later.  Every
+                                  program needs an i */
+  double T;                    /* time parameter, Julian Centuries since
+                                  J2000 */
+  double JDE;                  /* Julian Ephemeris Day of phase event */
+  double E;                    /* Eccentricity anomaly */
+  double M;                    /* Sun's mean anomaly */
+  double M1;                   /* Moon's mean anomaly */
+  double F;                    /* Moon's argument of latitude */
+  double O;                    /* Moon's longitude of ascenfing node */
+  double A[15];                /* planetary arguments */
+  double W;                    /* added correction for quarter phases */
 
-    if ( num < 1 || num > 9999 ) {
-        return QString::number( num );
-    }
+  T = k / 1236.85;                            /* (47.3) */
 
-    if ( num >= 1000 ) {
-        if ( includeMillenium || num % 1000 == 0 )
-            result += QChar( 0x05D0 - 1 + num / 1000 );
-        num %= 1000;
-    }
+  /* this is the first approximation.  all else is for style points! */
+  JDE = 2451550.09765 + (29.530588853 * k)    /* (47.1) */
+        + T * T * (0.0001337 + T * (-0.000000150 + 0.00000000073 * T));
 
-    if ( num >= 100 ) {
-        while ( num >= 500 ) {
-            result += QChar( 0x05EA );
-            num -= 400;
-        }
-        result += QChar( 0x05E7 - 1 + num / 100 );
-        num %= 100;
-    }
+  /* these are correction parameters used below */
+  E = 1.0                                     /* (45.6) */
+      + T * (-0.002516 + -0.0000074 * T);
+  M = 2.5534 + 29.10535669 * k                /* (47.4) */
+      + T * T * (-0.0000218 + -0.00000011 * T);
+  M1 = 201.5643 + 385.81693528 * k            /* (47.5) */
+       + T * T * (0.0107438 + T * (0.00001239 + -0.000000058 * T));
+  F = 160.7108 + 390.67050274 * k             /* (47.6) */
+      + T * T * (-0.0016341 * T * (-0.00000227 + 0.000000011 * T));
+  O = 124.7746 - 1.56375580 * k               /* (47.7) */
+      + T * T * (0.0020691 + 0.00000215 * T);
 
-    if ( num >= 10 ) {
-        if ( num == 15 || num == 16 )
-            num -= 9;
-        result += decade[num / 10];
-        num %= 10;
-    }
+  /* planetary arguments */
+  A[0]  = 0; /* unused! */
+  A[1]  = 299.77 +  0.107408 * k - 0.009173 * T * T;
+  A[2]  = 251.88 +  0.016321 * k;
+  A[3]  = 251.83 + 26.651886 * k;
+  A[4]  = 349.42 + 36.412478 * k;
+  A[5]  =  84.66 + 18.206239 * k;
+  A[6]  = 141.74 + 53.303771 * k;
+  A[7]  = 207.14 +  2.453732 * k;
+  A[8]  = 154.84 +  7.306860 * k;
+  A[9]  =  34.52 + 27.261239 * k;
+  A[10] = 207.19 +  0.121824 * k;
+  A[11] = 291.34 +  1.844379 * k;
+  A[12] = 161.72 + 24.198154 * k;
+  A[13] = 239.56 + 25.513099 * k;
+  A[14] = 331.55 +  3.592518 * k;
 
-    if ( num > 0 ) {
-        result += QChar( 0x05D0 - 1 + num );
-    }
+  /* all of the above crap must be made into radians!!! */
+  /* except for E... */
 
-    if ( result.length() == 1 ) {
-        result += '\'';
-    } else {
-        result.insert( result.length() - 1, '\"' );
-    }
+  M = torad(M);
+  M1 = torad(M1);
+  F = torad(F);
+  O = torad(O);
 
-    return result;
+  /* all those planetary arguments, too! */
+  for (i=1; i<=14; i++)
+    A[i] = torad(A[i]);
+
+  /* ok, we have all the parameters, let's apply them to the JDE.
+    (remember the JDE?  this is a program about the JDE...)        */
+  
+  switch(phi)
+  {
+    /* a special case for each different phase.  NOTE!, 
+       I'm not treating these in a 0123 order!!!  Pay
+       attention, there,  you!                         */
+
+    case 0: /* New Moon */
+      JDE = JDE
+          - 0.40720         * sin (M1)
+          + 0.17241 * E     * sin (M)
+          + 0.01608         * sin (2.0 * M1)
+          + 0.01039         * sin (2.0 * F)
+          + 0.00739 * E     * sin (M1 - M)
+          - 0.00514 * E     * sin (M1 + M)
+          + 0.00208 * E * E * sin (2.0 * M)
+          - 0.00111         * sin (M1 - 2.0 * F)
+          - 0.00057         * sin (M1 + 2.0 * F)
+          + 0.00056 * E     * sin (2.0 * M1 + M)
+          - 0.00042         * sin (3.0 * M1)
+          + 0.00042 * E     * sin (M + 2.0 * F)
+          + 0.00038 * E     * sin (M - 2.0 * F)
+          - 0.00024 * E     * sin (2.0 * M1 - M)
+          - 0.00017         * sin (O)
+          - 0.00007         * sin (M1 + 2.0 * M)
+          + 0.00004         * sin (2.0 * M1 - 2.0 * F)
+          + 0.00004         * sin (3.0 * M)
+          + 0.00003         * sin (M1 + M - 2.0 * F)
+          + 0.00003         * sin (2.0 * M1 + 2.0 * F)
+          - 0.00003         * sin (M1 + M + 2.0 * F)
+          + 0.00003         * sin (M1 - M + 2.0 * F)
+          - 0.00002         * sin (M1 - M - 2.0 * F)
+          - 0.00002         * sin (3.0 * M1 + M)
+          + 0.00002         * sin (4.0 * M1);
+
+          break;
+
+    case 2: /* Full Moon */
+      JDE = JDE
+          - 0.40614         * sin (M1)
+          + 0.17302 * E     * sin (M)
+          + 0.01614         * sin (2.0 * M1)
+          + 0.01043         * sin (2.0 * F)
+          + 0.00734 * E     * sin (M1 - M)
+          - 0.00515 * E     * sin (M1 + M)
+          + 0.00209 * E * E * sin (2.0 * M)
+          - 0.00111         * sin (M1 - 2.0 * F)
+          - 0.00057         * sin (M1 + 2.0 * F)
+          + 0.00056 * E     * sin (2.0 * M1 + M)
+          - 0.00042         * sin (3.0 * M1)
+          + 0.00042 * E     * sin (M + 2.0 * F)
+          + 0.00038 * E     * sin (M - 2.0 * F)
+          - 0.00024 * E     * sin (2.0 * M1 - M)
+          - 0.00017         * sin (O)
+          - 0.00007         * sin (M1 + 2.0 * M)
+          + 0.00004         * sin (2.0 * M1 - 2.0 * F)
+          + 0.00004         * sin (3.0 * M)
+          + 0.00003         * sin (M1 + M - 2.0 * F)
+          + 0.00003         * sin (2.0 * M1 + 2.0 * F)
+          - 0.00003         * sin (M1 + M + 2.0 * F)
+          + 0.00003         * sin (M1 - M + 2.0 * F)
+          - 0.00002         * sin (M1 - M - 2.0 * F)
+          - 0.00002         * sin (3.0 * M1 + M)
+          + 0.00002         * sin (4.0 * M1);
+
+          break;
+
+    case 1: /* First Quarter */
+    case 3: /* Last Quarter */
+      JDE = JDE
+          - 0.62801         * sin (M1)
+          + 0.17172 * E     * sin (M)
+          - 0.01183 * E     * sin (M1 + M)
+          + 0.00862         * sin (2.0 * M1)
+          + 0.00804         * sin (2.0 * F)
+          + 0.00454 * E     * sin (M1 - M)
+          + 0.00204 * E * E * sin (2.0 * M)
+          - 0.00180         * sin (M1 - 2.0 * F)
+          - 0.00070         * sin (M1 + 2.0 * F)
+          - 0.00040         * sin (3.0 * M1)
+          - 0.00034 * E     * sin (2.0 * M1 - M)
+          + 0.00032 * E     * sin (M + 2.0 * F)
+          + 0.00032 * E     * sin (M - 2.0 * F)
+          - 0.00028 * E * E * sin (M1 + 2.0 * M)
+          + 0.00027 * E     * sin (2.0 * M1 + M)
+          - 0.00017         * sin (O)
+          - 0.00005         * sin (M1 - M - 2.0 * F)
+          + 0.00004         * sin (2.0 * M1 + 2.0 * F)
+          - 0.00004         * sin (M1 + M + 2.0 * F)
+          + 0.00004         * sin (M1 - 2.0 * M)
+          + 0.00003         * sin (M1 + M - 2.0 * F)
+          + 0.00003         * sin (3.0 * M)
+          + 0.00002         * sin (2.0 * M1 - 2.0 * F)
+          + 0.00002         * sin (M1 - M + 2.0 * F)
+          - 0.00002         * sin (3.0 * M1 + M);
+    
+      W = 0.00306
+        - 0.00038 * E * cos(M)
+        + 0.00026 * cos(M1)
+        - 0.00002 * cos(M1 - M)
+        + 0.00002 * cos(M1 + M)
+        + 0.00002 * cos(2.0 * F);
+      if (phi == 3)
+        W = -W;
+      JDE += W;
+
+      break;
+
+    default: /* oops! */
+      fprintf(stderr, "The Moon has exploded!\n");
+      exit(1);
+      break; /* unexecuted code */
+  }
+      /* now there are some final correction to everything */
+  JDE = JDE
+      + 0.000325 * sin(A[1])
+      + 0.000165 * sin(A[2])
+      + 0.000164 * sin(A[3])
+      + 0.000126 * sin(A[4])
+      + 0.000110 * sin(A[5])
+      + 0.000062 * sin(A[6])
+      + 0.000060 * sin(A[7])
+      + 0.000056 * sin(A[8])
+      + 0.000047 * sin(A[9])
+      + 0.000042 * sin(A[10])
+      + 0.000040 * sin(A[11])
+      + 0.000037 * sin(A[12])
+      + 0.000035 * sin(A[13])
+      + 0.000023 * sin(A[14]);
+
+  return JDE;
 }
 
-static int heb2num( const QString &str, int &iLength )
+static double moonphasebylunation(int lun, int phi)
 {
-    QChar c;
-    QString s = str;
-    int result = 0;
-    iLength = 0;
-    int decadeValues[14] = {10, 20, 20, 30, 40, 40, 50,
-                            50, 60, 70, 80, 80, 90, 90};
+  double k;
 
-    int pos;
-    for ( pos = 0 ; pos < s.length() ; pos++ ) {
-        c = s[pos];
-        if ( s.length() > pos && ( s[pos + 1] == QChar( '\'' ) ||
-                                   s[pos + 1] == QChar( '\"' ) ) ) {
-            iLength++;
-            s.remove( pos + 1, 1 );
-        }
+  k = lun + phi / 4.0;
+  return moonphase(k, phi);
+}
 
-        if ( c >= QChar( 0x05D0 ) && c <= QChar( 0x05D7 ) ) {
-            if ( s.length() > pos && s[pos + 1] >= QChar( 0x05D0 ) &&
-                    s[pos + 1] <= QChar( 0x05EA ) ) {
-                result += ( c.unicode() - 0x05D0 + 1 ) * 1000;
-            } else {
-                result += c.unicode() - 0x05D0 + 1;
-            }
-        } else if ( c == QChar( 0x05D8 ) ) {
-            if ( s.length() > pos && s[pos + 1] >= QChar( 0x05D0 ) &&
-                    s[pos + 1] <= QChar( 0x05EA ) && s[pos + 1] != QChar( 0x05D5 ) &&
-                    s[pos + 1] != QChar( 0x05D6 ) ) {
-                result += 9000;
-            } else {
-                result += 9;
-            }
-        } else if ( c >= QChar( 0x05D9 ) && c <= QChar( 0x05E6 ) ) {
-            if ( s.length() > pos && s[pos + 1] >= QChar( 0x05D9 ) ) {
-                return -1;
-            } else {
-                result += decadeValues[c.unicode() - 0x05D9];
-            }
-        } else if ( c >= QChar( 0x05E7 ) && c <= QChar( 0x05EA ) ) {
-            result += ( c.unicode() - 0x05E7 + 1 ) * 100;
-        } else {
+//===========================================================================
+//  End of moonphase.cpp
+//===========================================================================
+
+//===========================================================================
+// Adapted from novascon.h from the NOVAS-C package
+// The whole package can be obtained from
+// http://aa.usno.navy.mil/AA/software/novas/novas_c/novasc_info.html
+//
+// Naval Observatory Vector Astrometry Subroutines
+// C Version
+//
+// U. S. Naval Observatory
+// Astronomical Applications Dept.
+// 3450 Massachusetts Ave., NW
+// Washington, DC  20392-5420
+//===========================================================================
+
+//===========================================================================
+// novascon.h
+//
+// NOVAS-C Version 2.0 (1 Nov 98)
+// Header file for novascon.c
+//===========================================================================
+
+//const short int FN0;
+
+/*
+   TDB Julian date of epoch J2000.0.
+*/
+
+//const double T0;
+
+/*
+   Speed of light in AU/Day.
+*/
+
+//const double C;
+
+/*
+   Value of 2.0 * pi in radians.
+*/
+
+//const double TWOPI;
+
+/*
+   Angle conversion constants.
+*/
+
+//const double RAD2SEC;
+//const double DEG2RAD;
+//const double RAD2DEG;
+
+//===========================================================================
+//  End of novascon.h
+//===========================================================================
+
+//===========================================================================
+// novascon.cpp
+//
+// NOVAS-C Version 2.0 (1 Nov 98)
+// Constants file
+//===========================================================================
+
+const short int FN0 = 0;
+
+/*
+   TDB Julian date of epoch J2000.0.
+*/
+
+const double T0 = 2451545.00000000;
+
+/*
+   Speed of light in AU/Day.
+*/
+
+const double C = 173.14463348;
+
+/*
+   Value of pi in radians.
+*/
+
+const double TWOPI = 6.28318530717958647692;
+
+/*
+   Angle conversion constants.
+*/
+
+const double RAD2SEC = 206264.806247096355;
+const double DEG2RAD = 0.017453292519943296;
+const double RAD2DEG = 57.295779513082321;
+
+//===========================================================================
+//  End of novascon.cpp
+//===========================================================================
+
+//===========================================================================
+// solarsystem.h
+//
+// NOVAS-C Version 2.0 (1 Nov 98)
+// Header file for all source files containing versions of
+// NOVAS-C function 'solarsystem'
+//===========================================================================
+
+/*
+   Function prototypes
+*/
+
+static short int solarsystem (double tjd, short int body, short int origin,
+                          double *pos, double *vel);
+
+//===========================================================================
+//  End of solarsystem.h
+//===========================================================================
+
+//===========================================================================
+// solsys3.cpp
+//
+// NOVAS-C Version 2.0 (1 Nov 98)
+// Solar System function; version 3.
+//===========================================================================
+
+/*
+   Additional function prototype.
+*/
+
+static void sun_eph (double jd,
+              double *ra, double *dec, double *dis);
+
+/********sun_eph */
+
+static void sun_eph (double jd,
+
+              double *ra, double *dec, double *dis)
+/*
+------------------------------------------------------------------------
+
+   PURPOSE:
+      To compute equatorial spherical coordinates of Sun referred to
+      the mean equator and equinox of date.
+
+   REFERENCES:
+      Bretagnon, P. and Simon, J.L. (1986).  Planetary Programs and
+         Tables from -4000 to + 2800. (Richmond, VA: Willmann-Bell).
+
+   INPUT
+   ARGUMENTS:
+      jd (double)
+         Julian date on TDT or ET time scale.
+
+   OUTPUT
+   ARGUMENTS:
+      ra (double)
+         Right ascension referred to mean equator and equinox of date
+         (hours).
+      dec (double)
+         Declination referred to mean equator and equinox of date 
+         (degrees).
+      dis (double)
+         Geocentric distance (AU).
+
+   RETURNED
+   VALUE:
+      None.
+
+   GLOBALS
+   USED:
+      T0
+      TWOPI
+      RAD2DEG
+
+   FUNCTIONS
+   CALLED:
+      sin           math.h
+      cos           math.h
+      asin          math.h
+      atan2         math.h
+
+   VER./DATE/
+   PROGRAMMER:
+      V1.0/08-94/JAB (USNO/AA)
+      V1.1/05-96/JAB (USNO/AA): Compute mean coordinates instead of
+                                apparent.
+
+   NOTES:
+      1. Quoted accuracy is 2.0 + 0.03 * T^2 arcsec, where T is
+      measured in units of 1000 years from J2000.0.  See reference.
+
+------------------------------------------------------------------------
+*/
+{
+   short int i;
+
+   double sum_lon = 0.0;
+   double sum_r = 0.0;
+   const double factor = 1.0e-07;
+   double u, arg, lon, lat, t, t2, emean, sin_lon;
+
+   struct sun_con
+   {
+   double l;
+   double r;
+   double alpha;
+   double nu;
+   };
+
+   static const struct sun_con con[50] =
+      {{403406.0,      0.0, 4.721964,     1.621043},
+       {195207.0, -97597.0, 5.937458, 62830.348067}, 
+       {119433.0, -59715.0, 1.115589, 62830.821524}, 
+       {112392.0, -56188.0, 5.781616, 62829.634302}, 
+       {  3891.0,  -1556.0, 5.5474  , 125660.5691 }, 
+       {  2819.0,  -1126.0, 1.5120  , 125660.9845 }, 
+       {  1721.0,   -861.0, 4.1897  ,  62832.4766 }, 
+       {     0.0,    941.0, 1.163   ,      0.813  }, 
+       {   660.0,   -264.0, 5.415   , 125659.310  }, 
+       {   350.0,   -163.0, 4.315   ,  57533.850  }, 
+       {   334.0,      0.0, 4.553   ,    -33.931  }, 
+       {   314.0,    309.0, 5.198   , 777137.715  }, 
+       {   268.0,   -158.0, 5.989   ,  78604.191  }, 
+       {   242.0,      0.0, 2.911   ,      5.412  }, 
+       {   234.0,    -54.0, 1.423   ,  39302.098  }, 
+       {   158.0,      0.0, 0.061   ,    -34.861  }, 
+       {   132.0,    -93.0, 2.317   , 115067.698  }, 
+       {   129.0,    -20.0, 3.193   ,  15774.337  }, 
+       {   114.0,      0.0, 2.828   ,   5296.670  }, 
+       {    99.0,    -47.0, 0.52    ,  58849.27   }, 
+       {    93.0,      0.0, 4.65    ,   5296.11   }, 
+       {    86.0,      0.0, 4.35    ,  -3980.70   }, 
+       {    78.0,    -33.0, 2.75    ,  52237.69   }, 
+       {    72.0,    -32.0, 4.50    ,  55076.47   }, 
+       {    68.0,      0.0, 3.23    ,    261.08   }, 
+       {    64.0,    -10.0, 1.22    ,  15773.85   }, 
+       {    46.0,    -16.0, 0.14    ,  188491.03  }, 
+       {    38.0,      0.0, 3.44    ,   -7756.55  }, 
+       {    37.0,      0.0, 4.37    ,     264.89  }, 
+       {    32.0,    -24.0, 1.14    ,  117906.27  }, 
+       {    29.0,    -13.0, 2.84    ,   55075.75  }, 
+       {    28.0,      0.0, 5.96    ,   -7961.39  }, 
+       {    27.0,     -9.0, 5.09    ,  188489.81  }, 
+       {    27.0,      0.0, 1.72    ,    2132.19  }, 
+       {    25.0,    -17.0, 2.56    ,  109771.03  }, 
+       {    24.0,    -11.0, 1.92    ,   54868.56  }, 
+       {    21.0,      0.0, 0.09    ,   25443.93  }, 
+       {    21.0,     31.0, 5.98    ,  -55731.43  }, 
+       {    20.0,    -10.0, 4.03    ,   60697.74  }, 
+       {    18.0,      0.0, 4.27    ,    2132.79  }, 
+       {    17.0,    -12.0, 0.79    ,  109771.63  }, 
+       {    14.0,      0.0, 4.24    ,   -7752.82  }, 
+       {    13.0,     -5.0, 2.01    ,  188491.91  }, 
+       {    13.0,      0.0, 2.65    ,     207.81  }, 
+       {    13.0,      0.0, 4.98    ,   29424.63  }, 
+       {    12.0,      0.0, 0.93    ,      -7.99  }, 
+       {    10.0,      0.0, 2.21    ,   46941.14  }, 
+       {    10.0,      0.0, 3.59    ,     -68.29  }, 
+       {    10.0,      0.0, 1.50    ,   21463.25  }, 
+       {    10.0,     -9.0, 2.55    ,  157208.40  }};
+
+/*
+   Define the time unit 'u', measured in units of 10000 Julian years
+   from J2000.0.
+*/
+
+   u = (jd - T0) / 3652500.0;
+   
+/*
+   Compute longitude and distance terms from the series.
+*/
+
+   for (i = 0; i < 50; i++)
+   {
+      arg = con[i].alpha + con[i].nu * u;
+      sum_lon += con[i].l * sin (arg);
+      sum_r += con[i].r * cos (arg);
+   }
+
+/*
+   Compute longitude, latitude, and distance referred to mean equinox
+   and ecliptic of date.
+*/
+
+   lon = 4.9353929 + 62833.1961680 * u + factor * sum_lon;
+
+   lon = fmod (lon, TWOPI);
+   if (lon < 0.0)
+      lon += TWOPI;
+
+   lat = 0.0;
+
+   *dis = 1.0001026 + factor * sum_r;
+
+/*
+   Compute mean obliquity of the ecliptic.
+*/
+
+   t = u * 100.0;
+   t2 = t * t;
+   emean = (0.001813 * t2 * t - 0.00059 * t2 - 46.8150 * t +
+      84381.448) / RAD2SEC;
+
+/*
+   Compute equatorial spherical coordinates referred to the mean equator 
+   and equinox of date.
+*/
+
+   sin_lon = sin (lon);
+   *ra = atan2 ((cos (emean) * sin_lon), cos (lon)) * RAD2DEG;
+   *ra = fmod (*ra, 360.0);
+   if (*ra < 0.0)
+      *ra += 360.0;
+   *ra = *ra / 15.0;
+
+   *dec = asin (sin (emean) * sin_lon) * RAD2DEG;
+   
+   return;
+}
+
+/********solarsystem */
+
+static short int solarsystem (double tjd, short int body, short int origin,
+                       double *pos, double *vel)
+
+/*
+------------------------------------------------------------------------
+
+   PURPOSE:    
+      Provides the position and velocity of the Earth at epoch 'tjd'
+      by evaluating a closed-form theory without reference to an 
+      external file.  This function can also provide the position
+      and velocity of the Sun.
+
+   REFERENCES: 
+      Kaplan, G. H. "NOVAS: Naval Observatory Vector Astrometry
+         Subroutines"; USNO internal document dated 20 Oct 1988;
+         revised 15 Mar 1990.
+      Explanatory Supplement to The Astronomical Almanac (1992).
+
+   INPUT
+   ARGUMENTS:
+      tjd (double)
+         TDB Julian date.
+      body (short int)
+         Body identification number.
+         Set 'body' = 0 or 'body' = 1 or 'body' = 10 for the Sun.
+         Set 'body' = 2 or 'body' = 3 for the Earth.
+      origin (short int)
+         Origin code; solar system barycenter   = 0,
+                      center of mass of the Sun = 1.
+
+   OUTPUT
+   ARGUMENTS:
+      pos[3] (double)
+         Position vector of 'body' at 'tjd'; equatorial rectangular
+         coordinates in AU referred to the mean equator and equinox
+         of J2000.0.
+      vel[3] (double)
+         Velocity vector of 'body' at 'tjd'; equatorial rectangular
+         system referred to the mean equator and equinox of J2000.0,
+         in AU/Day.
+
+   RETURNED
+   VALUE:
+      (short int)
+         0...Everything OK.
+         1...Input Julian date ('tjd') out of range.
+         2...Invalid value of 'body'.
+
+   GLOBALS
+   USED:
+      T0, TWOPI.
+
+   FUNCTIONS
+   CALLED:
+      sun_eph          solsys3.c
+      radec2vector     novas.c
+      precession       novas.c
+      sin              math.h
+      cos              math.h
+      fabs             math.h
+      fmod             math.h
+
+   VER./DATE/
+   PROGRAMMER:
+      V1.0/05-96/JAB (USNO/AA) Convert to C; substitute new theory of
+                               Sun.
+      V1.1/06-98/JAB (USNO/AA) Updated planetary masses & mean elements.
+
+   NOTES:
+      1. This function is the "C" version of Fortran NOVAS routine
+      'solsys' version 3.
+
+------------------------------------------------------------------------
+*/
+{
+   short int ierr = 0;
+   short int i;
+
+/*
+   The arrays below contain data for the four largest planets.  Masses
+   are DE405 values; elements are from Explanatory Supplement, p. 316). 
+   These data are used for barycenter computations only.
+*/
+
+   const double pm[4] = {1047.349, 3497.898, 22903.0, 19412.2};
+   const double pa[4] = {5.203363, 9.537070, 19.191264, 30.068963};
+   const double pl[4] = {0.600470, 0.871693, 5.466933, 5.321160};
+   const double pn[4] = {1.450138e-3, 5.841727e-4, 2.047497e-4, 
+                         1.043891e-4};
+
+/*
+   'obl' is the obliquity of ecliptic at epoch J2000.0 in degrees.
+*/
+
+   const double obl = 23.43929111;
+
+   static double tlast = 0.0;
+   static double sine, cose, tmass, pbary[3], vbary[3];
+
+   double oblr, qjd, ras, decs, diss, pos1[3], p[3][3], dlon, sinl,
+      cosl, x, y, z, xdot, ydot, zdot, f;
+
+/*
+   Initialize constants.
+*/
+
+   if (tlast == 0.0)
+   {
+      oblr = obl * TWOPI / 360.0;
+      sine = sin (oblr);
+      cose = cos (oblr);
+      tmass = 1.0;
+      for (i = 0; i < 4; i++)
+         tmass += 1.0 / pm[i];
+      tlast = 1.0;
+   }
+
+/*
+   Check if input Julian date is within range.
+
+   if ((tjd < 2340000.5) || (tjd > 2560000.5))
+      return (ierr = 1);
+*/
+
+/*
+   Form helicentric coordinates of the Sun or Earth, depending on
+   'body'.
+*/
+
+   if ((body == 0) || (body == 1) || (body == 10))
+      for (i = 0; i < 3; i++)
+         pos[i] = vel[i] = 0.0;
+
+    else if ((body == 2) || (body == 3))
+    {
+      for (i = 0; i < 3; i++)
+      {
+         qjd = tjd + (double) (i - 1) * 0.1;
+         sun_eph (qjd, &ras,&decs,&diss);
+         radec2vector (ras,decs,diss, pos1);
+         precession (qjd,pos1,T0, pos);
+         p[i][0] = -pos[0];
+         p[i][1] = -pos[1];
+         p[i][2] = -pos[2];
+      }
+      for (i = 0; i < 3; i++)
+      {
+         pos[i] = p[1][i];
+         vel[i] = (p[2][i] - p[0][i]) / 0.2;
+      }
+    }
+
+    else
+      return (ierr = 2);
+           
+/*
+   If 'origin' = 0, move origin to solar system barycenter.
+
+   Solar system barycenter coordinates are computed from rough
+   approximations of the coordinates of the four largest planets.
+*/
+
+   if (origin == 0)
+   {
+      if (fabs (tjd - tlast) >= 1.0e-06)
+      {
+         for (i = 0; i < 3; i++)
+            pbary[i] = vbary[i] = 0.0;
+
+/*
+   The following loop cycles once for each of the four planets.
+
+   'sinl' and 'cosl' are the sine and cosine of the planet's mean
+   longitude.
+*/
+
+         for (i = 0; i < 4; i++)
+         {
+            dlon = pl[i] + pn[i] * (tjd - T0);
+            dlon = fmod (dlon, TWOPI);
+            sinl = sin (dlon);
+            cosl = cos (dlon);
+
+            x =  pa[i] * cosl;
+            y =  pa[i] * sinl * cose;
+            z =  pa[i] * sinl * sine;
+            xdot = -pa[i] * pn[i] * sinl;
+            ydot =  pa[i] * pn[i] * cosl * cose;
+            zdot =  pa[i] * pn[i] * cosl * sine;
+
+            f = 1.0 / (pm[i] * tmass);
+
+            pbary[0] += x * f;
+            pbary[1] += y * f;
+            pbary[2] += z * f;
+            vbary[0] += xdot * f;
+            vbary[1] += ydot * f;
+            vbary[2] += zdot * f;
+         }
+
+         tlast = tjd;
+      }
+
+      for (i = 0; i < 3; i++)
+      {
+         pos[i] -= pbary[i];
+         vel[i] -= vbary[i];
+      }
+   }
+
+   return (ierr);
+}
+
+//===========================================================================
+//  End of solsys3.cpp
+//===========================================================================
+
+//===========================================================================
+// novas.cpp
+//
+// NOVAS-C Version 2.0 (1 Nov 98)
+//===========================================================================
+
+/*
+   Global variables.
+
+   'PSI_COR' and 'EPS_COR' are celestial pole offsets for high-
+   precision applications.  See function 'cel_pole' for more details.
+*/
+
+static double PSI_COR = 0.0;
+static double EPS_COR = 0.0;
+
+
+/********earthtilt */
+
+static void earthtilt (double tjd, 
+
+                double *mobl, double *tobl, double *eq, double *dpsi,
+                double *deps)
+/*
+------------------------------------------------------------------------
+
+   PURPOSE:    
+      Computes quantities related to the orientation of the Earth's
+      rotation axis at Julian date 'tjd'.
+
+   REFERENCES: 
+      Kaplan, G. H. et. al. (1989). Astron. Journ. Vol. 97, 
+         pp. 1197-1210.
+      Kaplan, G. H. "NOVAS: Naval Observatory Vector Astrometry
+         Subroutines"; USNO internal document dated 20 Oct 1988;
+         revised 15 Mar 1990.
+      Transactions of the IAU (1994). Resolution C7; Vol. XXIIB, p. 59.
+      McCarthy, D. D. (ed.) (1996). IERS Technical Note 21. IERS
+         Central Bureau, Observatoire de Paris), pp. 21-22.
+
+   INPUT
+   ARGUMENTS:
+      tjd (double)
+         TDB Julian date of the desired time
+
+   OUTPUT
+   ARGUMENTS:
+      *mobl (double)
+         Mean obliquity of the ecliptic in degrees at 'tjd'.
+      *tobl (double)
+         True obliquity of the ecliptic in degrees at 'tjd'.
+      *eq (double)
+         Equation of the equinoxes in seconds of time at 'tjd'.
+      *dpsi (double)
+         Nutation in longitude in arcseconds at 'tjd'.
+      *deps (double)
+         Nutation in obliquity in arcseconds at 'tjd'.
+
+   RETURNED
+   VALUE:
+      None.
+
+   GLOBALS
+   USED:
+      PSI_COR, EPS_COR, DEG2RAD 
+
+   FUNCTIONS
+   CALLED:
+      nutation_angles  novas.c
+      fund_args        novas.c
+      fabs             math.h
+      pow              math.h
+      cos              math.h
+
+   VER./DATE/
+   PROGRAMMER:
+      V1.0/08-93/WTH (USNO/AA) Translate Fortran.
+      V1.1/06-97/JAB (USNO/AA) Incorporate IAU (1994) and IERS (1996) 
+                               adjustment to the "equation of the 
+                               equinoxes".
+      V1.2/10-97/JAB (USNO/AA) Implement function that computes 
+                               arguments of the nutation series.
+      V1.3/07-98/JAB (USNO/AA) Use global variables 'PSI_COR' and 
+                               'EPS_COR' to apply celestial pole offsets
+                               for high-precision applications.
+
+   NOTES:
+      1. This function is the "C" version of Fortran NOVAS routine
+      'etilt'.
+      2. Values of the celestial pole offsets 'PSI_COR' and 'EPS_COR'
+      are set using function 'cel_pole', if desired.  See the prolog
+      of 'cel_pole' for details.
+
+------------------------------------------------------------------------
+*/
+{
+   static double tjd_last = 0.0;
+   static double t, dp, de;
+   double d_psi, d_eps, mean_obliq, true_obliq, eq_eq, args[5];
+
+/*
+   Compute time in Julian centuries from epoch J2000.0.
+*/
+
+  t = (tjd - T0) / 36525.0;
+
+/*
+   Compute the nutation angles (arcseconds) from the standard nutation 
+   model if the input Julian date is significantly different from the 
+   last Julian date.
+*/
+
+  if (fabs (tjd - tjd_last) > 1.0e-6)
+      nutation_angles (t, &dp,&de);
+
+/*
+   Apply observed celestial pole offsets.
+*/
+
+   d_psi = dp + PSI_COR;
+   d_eps = de + EPS_COR;
+
+/*
+   Compute mean obliquity of the ecliptic in arcseconds.
+*/
+
+   mean_obliq = 84381.4480 - 46.8150 * t - 0.00059 * pow (t, 2.0)
+      + 0.001813 * pow (t, 3.0);
+
+/*
+   Compute true obliquity of the ecliptic in arcseconds.
+*/
+
+   true_obliq = mean_obliq + d_eps;
+
+/*
+   Convert obliquity values to degrees.
+*/
+
+   mean_obliq /= 3600.0;
+   true_obliq /= 3600.0;
+
+/*
+   Compute equation of the equinoxes in seconds of time.
+
+   'args[4]' is "omega", the longitude of the ascending node of the 
+   Moon's mean orbit on the ecliptic in radians.  This is also an 
+   argument of the nutation series.
+*/
+
+   fund_args (t, args);
+
+   eq_eq = d_psi * cos (mean_obliq * DEG2RAD) +
+      (0.00264  * sin (args[4]) + 0.000063 * sin (2.0 * args[4]));
+
+   eq_eq /= 15.0;
+                           
+/*
+   Reset the value of the last Julian date and set the output values.
+*/
+
+   tjd_last = tjd;
+
+   *dpsi = d_psi;
+   *deps = d_eps;
+   *eq = eq_eq;
+   *mobl = mean_obliq;
+   *tobl = true_obliq;
+
+   return;
+}
+
+/********aberration */
+
+short int aberration (double *pos, double *ve, double lighttime,
+
+                      double *pos2)
+/*
+------------------------------------------------------------------------
+
+   PURPOSE:    
+      Corrects position vector for aberration of light.  Algorithm
+      includes relativistic terms.
+
+   REFERENCES: 
+      Murray, C. A. (1981) Mon. Notices Royal Ast. Society 195, 639-648.
+      Kaplan, G. H. et. al. (1989). Astron. Journ. Vol. 97, 
+         pp. 1197-1210.
+      Kaplan, G. H. "NOVAS: Naval Observatory Vector Astrometry
+         Subroutines"; USNO internal document dated 20 Oct 1988;
+         revised 15 Mar 1990.
+
+   INPUT
+   ARGUMENTS:
+      pos[3] (double)
+         Position vector, referred to origin at center of mass of the
+         Earth, components in AU.
+      ve[3] (double)
+         Velocity vector of center of mass of the Earth, referred to
+         origin at solar system barycenter, components in AU/day.
+      lighttime (double)
+         Light time from body to Earth in days.
+
+   OUTPUT
+   ARGUMENTS:
+      pos2[3] (double)
+         Position vector, referred to origin at center of mass of the
+         Earth, corrected for aberration, components in AU
+
+   RETURNED
+   VALUE:
+      (short int)
+         0...Everything OK.
+
+   GLOBALS
+   USED:
+      C
+
+   FUNCTIONS
+   CALLED:
+      sqrt      math.h
+      pow       math.h
+
+   VER./DATE/
+   PROGRAMMER:
+      V1.0/01-93/TKB (USNO/NRL Optical Interfer.) Translate Fortran.
+      V1.1/08-93/WTH (USNO/AA) Update to C Standards.
+
+   NOTES:
+      1. This function is the "C" version of Fortran NOVAS routine
+      'aberat'.
+      2. If 'lighttime' = 0 on input, this function will compute it.
+
+------------------------------------------------------------------------
+*/
+{
+   short int j;
+
+   double p1mag, vemag, beta, dot,cosd, gammai, p, q, r;
+
+   if (lighttime == 0.0)
+   {
+      p1mag = sqrt (pow (pos[0], 2.0) + pow (pos[1], 2.0)
+                  + pow (pos[2], 2.0));
+      lighttime = p1mag / C;
+   }
+    else
+      p1mag = lighttime * C;
+
+   vemag = sqrt (pow (ve[0], 2.0) + pow (ve[1], 2.0) 
+               + pow (ve[2], 2.0));
+   beta = vemag / C;
+   dot = pos[0] * ve[0] + pos[1] * ve[1] + pos[2] * ve[2];
+
+   cosd = dot / (p1mag * vemag);
+   gammai = sqrt (1.0 - pow (beta, 2.0));
+   p = beta * cosd;
+   q = (1.0 + p / (1.0 + gammai)) * lighttime;
+   r = 1.0 + p;
+
+   for (j = 0; j < 3; j++)
+      pos2[j] = (gammai * pos[j] + q * ve[j]) / r;
+
+   return 0;
+}
+
+/********precession */
+
+static void precession (double tjd1, double *pos, double tjd2,
+
+                 double *pos2)
+/*
+------------------------------------------------------------------------
+
+   PURPOSE:    
+      Precesses equatorial rectangular coordinates from one epoch to
+      another.  The coordinates are referred to the mean equator and
+      equinox of the two respective epochs.
+
+   REFERENCES:
+      Explanatory Supplement to AE and AENA (1961); pp. 30-34.
+      Lieske, J., et al. (1977). Astron. & Astrophys. 58, 1-16. 
+      Lieske, J. (1979). Astron. & Astrophys. 73, 282-284. 
+      Kaplan, G. H. et. al. (1989). Astron. Journ. Vol. 97, 
+         pp. 1197-1210.
+      Kaplan, G. H. "NOVAS: Naval Observatory Vector Astrometry
+         Subroutines"; USNO internal document dated 20 Oct 1988;
+         revised 15 Mar 1990.
+
+   INPUT
+   ARGUMENTS:
+      tjd1 (double)
+         TDB Julian date of first epoch.
+      pos[3] (double)
+         Position vector, geocentric equatorial rectangular coordinates,
+         referred to mean equator and equinox of first epoch.
+      tjd2 (double)
+         TDB Julian date of second epoch.
+
+   OUTPUT
+   ARGUMENTS:
+      pos2[3] (double)
+         Position vector, geocentric equatorial rectangular coordinates,
+         referred to mean equator and equinox of second epoch.
+
+   RETURNED
+   VALUE:
+      None.
+
+   GLOBALS
+   USED:
+      T0, RAD2SEC
+
+   FUNCTIONS
+   CALLED:
+      sin    math.h
+      cos    math.h
+
+   VER./DATE/
+   PROGRAMMER:
+      V1.0/01-93/TKB (USNO/NRL Optical Interfer.) Translate Fortran.
+      V1.1/08-93/WTH (USNO/AA) Update to C Standards.
+      V1.2/03-98/JAB (USNO/AA) Change function type from 'short int' to
+                               'void'.
+      V1.3/12-99/JAB (USNO/AA) Precompute trig terms for greater
+                               efficiency.
+
+   NOTES:
+      1. This function is the "C" version of Fortran NOVAS routine
+      'preces'.
+
+------------------------------------------------------------------------
+*/
+{
+   double xx, yx, zx, xy, yy, zy, xz, yz, zz, t, t1, t02, t2, t3,
+      zeta0, zee, theta, cz0, sz0, ct, st, cz, sz;
+
+/*
+   't' and 't1' below correspond to Lieske's "big T" and "little t".
+*/
+
+   t = (tjd1 - T0) / 36525.0;
+   t1 = (tjd2 - tjd1) / 36525.0;
+   t02 = t * t;
+   t2 = t1 * t1;
+   t3 = t2 * t1;
+
+/*
+   'zeta0', 'zee', 'theta' below correspond to Lieske's "zeta-sub-a",
+   "z-sub-a", and "theta-sub-a".
+*/
+
+   zeta0 = (2306.2181 + 1.39656 * t - 0.000139 * t02) * t1
+         + (0.30188 - 0.000344 * t) * t2 + 0.017998 * t3;
+
+   zee = (2306.2181 + 1.39656 * t - 0.000139 * t02) * t1
+       + (1.09468 + 0.000066 * t) * t2 + 0.018203 * t3;
+
+   theta = (2004.3109 - 0.85330 * t - 0.000217 * t02) * t1
+         + (-0.42665 - 0.000217 * t) * t2 - 0.041833 * t3;
+
+   zeta0 /= RAD2SEC;
+   zee /= RAD2SEC;
+   theta /= RAD2SEC;
+
+/*
+   Precalculate trig terms.
+*/
+
+   cz0 = cos (zeta0);
+   sz0 = sin (zeta0);
+   ct = cos (theta);
+   st = sin (theta);
+   cz = cos (zee);
+   sz = sin (zee);
+
+/*
+   Precession rotation matrix follows.
+*/
+
+   xx =  cz0 * ct * cz - sz0 * sz;
+   yx = -sz0 * ct * cz - cz0 * sz;
+   zx = -st * cz;
+   xy = cz0 * ct * sz + sz0 * cz;
+   yy = -sz0 * ct * sz + cz0 * cz;
+   zy = -st * sz;
+   xz = cz0 * st;
+   yz = -sz0 * st;
+   zz = ct;
+
+/*
+   Perform rotation.
+*/
+
+   pos2[0] = xx * pos[0] + yx * pos[1] + zx * pos[2];
+   pos2[1] = xy * pos[0] + yy * pos[1] + zy * pos[2];
+   pos2[2] = xz * pos[0] + yz * pos[1] + zz * pos[2];
+
+   return;
+}
+
+/********nutate */
+
+static short int nutate (double tjd, short int fn, double *pos, 
+
+                  double *pos2)
+/*
+------------------------------------------------------------------------
+
+   PURPOSE:    
+      Nutates equatorial rectangular coordinates from mean equator and
+      equinox of epoch to true equator and equinox of epoch. Inverse
+      transformation may be applied by setting flag 'fn'.
+
+   REFERENCES: 
+      Kaplan, G. H. et. al. (1989). Astron. Journ. Vol. 97, 
+         pp. 1197-1210.
+      Kaplan, G. H. "NOVAS: Naval Observatory Vector Astrometry
+         Subroutines"; USNO internal document dated 20 Oct 1988;
+         revised 15 Mar 1990.
+
+   INPUT
+   ARGUMENTS:
+      tdb (double)
+         TDB julian date of epoch.
+      fn (short int)
+         Flag determining 'direction' of transformation;
+            fn  = 0 transformation applied, mean to true.
+            fn != 0 inverse transformation applied, true to mean.
+      pos[3] (double)
+         Position vector, geocentric equatorial rectangular coordinates,
+         referred to mean equator and equinox of epoch.
+
+   OUTPUT
+   ARGUMENTS:
+      pos2[3] (double)
+         Position vector, geocentric equatorial rectangular coordinates,
+         referred to true equator and equinox of epoch.
+
+   RETURNED
+   VALUE:
+      (short int)
+         0...Everything OK.
+
+   GLOBALS
+   USED:
+      DEG2RAD, RAD2SEC
+
+   FUNCTIONS
+   CALLED:
+      earthtilt     novas.c
+      cos           math.h
+      sin           math.h
+
+   VER./DATE/
+   PROGRAMMER:
+      V1.0/01-93/TKB (USNO/NRL Optical Interfer.) Translate Fortran.
+      V1.1/08-93/WTH (USNO/AA) Update to C Standards.
+
+   NOTES:
+      1. This function is the "C" version of Fortran NOVAS routine
+      'nutate'.
+
+------------------------------------------------------------------------
+*/
+{
+   double cobm, sobm, cobt, sobt, cpsi, spsi, xx, yx, zx, xy, yy, zy,
+      xz, yz, zz, oblm, oblt, eqeq, psi, eps;
+
+   earthtilt (tjd, &oblm,&oblt,&eqeq,&psi,&eps);
+
+   cobm = cos (oblm * DEG2RAD);
+   sobm = sin (oblm * DEG2RAD);
+   cobt = cos (oblt * DEG2RAD);
+   sobt = sin (oblt * DEG2RAD);
+   cpsi = cos (psi / RAD2SEC);
+   spsi = sin (psi / RAD2SEC);
+
+/*
+   Nutation rotation matrix follows.
+*/
+
+   xx = cpsi;
+   yx = -spsi * cobm;
+   zx = -spsi * sobm;
+   xy = spsi * cobt;
+   yy = cpsi * cobm * cobt + sobm * sobt;
+   zy = cpsi * sobm * cobt - cobm * sobt;
+   xz = spsi * sobt;
+   yz = cpsi * cobm * sobt - sobm * cobt;
+   zz = cpsi * sobm * sobt + cobm * cobt;
+
+   if (!fn)
+   {
+
+/*
+   Perform rotation.
+*/
+
+      pos2[0] = xx * pos[0] + yx * pos[1] + zx * pos[2];
+      pos2[1] = xy * pos[0] + yy * pos[1] + zy * pos[2];
+      pos2[2] = xz * pos[0] + yz * pos[1] + zz * pos[2];
+   }
+    else
+   {
+
+/*
+   Perform inverse rotation.
+*/
+
+      pos2[0] = xx * pos[0] + xy * pos[1] + xz * pos[2];
+      pos2[1] = yx * pos[0] + yy * pos[1] + yz * pos[2];
+      pos2[2] = zx * pos[0] + zy * pos[1] + zz * pos[2];
+   }
+
+   return 0;
+}
+
+/********nutation_angles */
+
+static short int nutation_angles (double t,
+
+                           double *longnutation, double *obliqnutation)
+/*
+------------------------------------------------------------------------
+
+   PURPOSE:    
+      Provides fast evaluation of the nutation components according to
+      the 1980 IAU Theory of Nutation.
+
+   REFERENCES: 
+      Kaplan, G. H. et. al. (1989). Astron. Journ. Vol. 97, 
+         pp. 1197-1210, and references therein.
+      Kaplan, G. H. "NOVAS: Naval Observatory Vector Astrometry
+         Subroutines"; USNO internal document dated 20 Oct 1988;
+         revised 15 Mar 1990.
+      Miller, B. R. (1989). Proceedings of the ACM-SIGSAM International
+         Symposium on Symbolic and Algebraic Computation; pp. 199-206.
+
+   INPUT
+   ARGUMENTS:
+      t (double)
+         TDB time in Julian centuries since J2000.0
+
+   OUTPUT
+   ARGUMENTS:
+      *longnutation (double)
+         Nutation in longitude in arcseconds.
+      *obliqnutation (double)
+         Nutation in obliquity in arcseconds.
+
+   RETURNED
+   VALUE:
+      (short int)
+         0...Everything OK.
+
+   GLOBALS
+   USED:
+      None.
+
+   FUNCTIONS
+   CALLED:
+      fund_args         novas.c
+      sin               math.h
+      cos               math.h
+
+   VER./DATE/
+   PROGRAMMER:
+      V1.0/11-88/BRM (NIST)
+      V1.1/08-93/WTH (USNO/AA): Translate Fortran.
+      V1.2/10-97/JAB (USNO/AA): Add function to compute arguments.
+
+   NOTES:
+      1. This function is based on computer-generated Fortran code.
+      Original Fortran code generated on 11/29/88 16:35:35 at the
+      National Institutes of Standards and Technology (NIST), by 
+      Bruce R. Miller.
+      2. This function is the "C" version of Fortran NOVAS routine
+      'nod', member 'vanut1f'.
+
+------------------------------------------------------------------------
+*/
+{
+   double clng[106] = {1.0,   1.0,  -1.0, -1.0,   1.0,  -1.0,  -1.0,
+                      -1.0,  -1.0,  -1.0, -1.0,   1.0,  -1.0,   1.0,
+                      -1.0,   1.0,   1.0, -1.0,  -1.0,   1.0,   1.0,
+                      -1.0,   1.0,  -1.0,  1.0,  -1.0,  -1.0,  -1.0,
+                       1.0,  -1.0,  -1.0,  1.0,  -1.0,   1.0,   2.0,
+                       2.0,   2.0,   2.0,  2.0,  -2.0,   2.0,   2.0,
+                       2.0,   3.0,  -3.0, -3.0,   3.0,  -3.0,   3.0,
+                      -3.0,   3.0,   4.0,  4.0,  -4.0,  -4.0,   4.0,
+                      -4.0,   5.0,   5.0,  5.0,  -5.0,   6.0,   6.0,
+                       6.0,  -6.0,   6.0, -7.0,   7.0,   7.0,  -7.0,
+                      -8.0,  10.0,  11.0, 12.0, -13.0, -15.0, -16.0,
+                     -16.0,  17.0, -21.0,-22.0,  26.0,  29.0,  29.0,
+                     -31.0, -38.0, -46.0, 48.0, -51.0,  58.0,  59.0,
+                      63.0,  63.0,-123.0,129.0,-158.0,-217.0,-301.0,
+                    -386.0,-517.0, 712.0,1426.0,2062.0,-2274.0,
+                  -13187.0,-171996.0},
+      clngx[14]={ 0.1,-0.1,0.1,0.1,0.1,0.1,0.2,-0.2,-0.4,0.5,1.2,
+                 -1.6,-3.4,-174.2},
+       cobl[64]={    1.0,    1.0,    1.0,   -1.0,   -1.0,   -1.0,
+                     1.0,    1.0,    1.0,    1.0,    1.0,   -1.0,
+                     1.0,   -1.0,    1.0,   -1.0,   -1.0,   -1.0,
+                     1.0,   -1.0,    1.0,    1.0,   -1.0,   -2.0,
+                    -2.0,   -2.0,    3.0,    3.0,   -3.0,    3.0,
+                     3.0,   -3.0,    3.0,    3.0,   -3.0,    3.0,
+                     3.0,    5.0,    6.0,    7.0,   -7.0,    7.0,
+                    -8.0,    9.0,  -10.0,  -12.0,   13.0,   16.0,
+                   -24.0,   26.0,   27.0,   32.0,  -33.0,  -53.0,
+                    54.0,  -70.0,  -95.0,  129.0,  200.0,  224.0,
+                  -895.0,  977.0, 5736.0,92025.0},
+       coblx[8]={ -0.1, -0.1,  0.3,  0.5, -0.5, -0.6, -3.1,  8.9};
+
+   short int i, ii, i1, i2, iop;
+   short int nav1[10]={0,0,1,0,2,1,3,0,4,0},
+       nav2[10]={ 0, 0, 0, 5, 1, 1, 3, 3, 4, 4},
+       nav[183]={ 2, 0, 1, 1, 5, 2, 2, 0, 2, 1, 0, 3, 2, 5, 8, 1,17, 8,
+                  1,18, 0, 2, 0, 8, 0, 1, 3, 2, 1, 8, 0,17, 1, 1,15, 1,
+                  2,21, 1, 1, 2, 8, 2, 0,29, 1,21, 2, 2, 1,29, 2, 0, 9,
+                  2, 5, 4, 2, 0, 4, 0, 1, 9, 2, 1, 4, 0, 2, 9, 2, 2, 4,
+                  1,14,44, 2, 0,45, 2, 5,44, 2,50, 0, 1,36, 2, 2, 5,45,
+                  1,37, 2, 2, 1,45, 2, 1,44, 2,53, 1, 2, 8, 4, 1,40, 3,
+                  2,17, 4, 2, 0,64, 1,39, 8, 2,27, 4, 1,50,18, 1,21,47,
+                  2,44, 3, 2,44, 8, 2,45, 8, 1,46, 8, 0,67, 2, 1, 5,74,
+                  1, 0,74, 2,50, 8, 1, 5,78, 2,17,53, 2,53, 8, 2, 0,80,
+                  2, 0,81, 0, 7,79, 1, 7,81, 2, 1,81, 2,24,44, 1, 1,79,
+                  2,27,44},
+      llng[106]={ 57, 25, 82, 34, 41, 66, 33, 36, 19, 88, 18,104, 93,
+                  84, 47, 28, 83, 86, 69, 75, 89, 30, 58, 73, 46, 77,
+                  23, 32, 59, 72, 31, 16, 74, 22, 98, 38, 62, 96, 37,
+                  35,  6, 76, 85, 51, 26, 10, 13, 63,105, 52,102, 67,
+                  99, 15, 24, 14,  3,100, 65, 11, 55, 68, 20, 87, 64,
+                  95, 27, 60, 61, 80, 91, 94, 12, 43, 71, 42, 97, 70,
+                   7, 49, 29,  2,  5, 92, 50, 78, 56, 17, 48, 40, 90,
+                   8, 39, 54, 81, 21,103, 53, 45,101,  0,  1,  9, 44,
+                  79,  4},
+      llngx[14]={ 81, 7, 97, 0, 39, 40, 9, 44, 45,103,101, 79, 1, 4},
+      lobl[64]={  51, 98, 17, 21,  5,  2, 63,105, 38, 52,102, 62, 96,
+                  37, 35, 76, 36, 88, 85,104, 93, 84, 83, 67, 99,  8,
+                  68,100, 60, 61, 91, 87, 64, 80, 95, 65, 55, 94, 43,
+                  97,  0, 71, 70, 42, 49, 92, 50, 78, 56, 90, 48, 40,
+                  39, 54,  1, 81,103, 53, 45,101,  9, 44, 79,  4},
+      loblx[8] ={ 53,  1,103,  9, 44,101, 79,  4};
+
+   double a[5], angle, cc, ss1, cs, sc, c[106], s[106], lng, lngx, obl,
+      oblx;
+
+/*
+   Compute the arguments of the nutation series in radians.
+*/
+
+   fund_args (t, a);
+
+/*
+   Evaluate the series.
+*/
+
+   i = 0;
+   for (ii = 0; ii < 10; ii += 2)
+   {
+      angle = a[nav1[ii]] * (double) (nav1[1+ii]+1);
+      c[i] = cos (angle);
+      s[i] = sin (angle);
+      i += 1;
+   }
+
+   i = 5;
+   for (ii = 0; ii < 10; ii += 2)
+   {
+      i1 = nav2[ii];
+      i2 = nav2[1+ii];
+
+      c[i] = c[i1] * c[i2] - s[i1] * s[i2];
+      s[i] = s[i1] * c[i2] + c[i1] * s[i2];
+      i += 1;
+   }
+
+   i = 10;
+   for (ii = 0; ii < 183; ii += 3)
+   {
+      iop = nav[ii];
+      i1 = nav[1+ii];
+      i2 = nav[2+ii];
+      switch (iop)
+      {
+         case 0:
+            c[i] = c[i1] * c[i2] - s[i1] * s[i2];
+            s[i] = s[i1] * c[i2] + c[i1] * s[i2];
+            i += 1;
             break;
+         case 1:
+            c[i] = c[i1] * c[i2] + s[i1] * s[i2];
+            s[i] = s[i1] * c[i2] - c[i1] * s[i2];
+            i += 1;
+            break;
+         case 2:
+            cc = c[i1] * c[i2];
+            ss1 = s[i1] * s[i2];
+            sc = s[i1] * c[i2];
+            cs = c[i1] * s[i2];
+            c[i] = cc - ss1;
+            s[i] = sc + cs;
+            i += 1;
+            c[i] = cc + ss1;
+            s[i] = sc - cs;
+            i += 1;
+            break;
+      }
+      if (iop == 3)
+         break;
+   }
+
+   lng = 0.0;
+   for (i = 0; i < 106; i++)
+      lng += clng[i] * s[llng[i]];
+
+   lngx = 0.0;
+   for (i = 0; i < 14; i++)
+      lngx += clngx[i] * s[llngx[i]];
+
+   obl = 0.0;
+   for (i = 0; i < 64; i++)
+      obl += cobl[i] * c[lobl[i]];
+
+   oblx = 0.0;
+   for (i = 0; i < 8; i++)
+      oblx += coblx[i] * c[loblx[i]];
+
+   *longnutation = (lng + t * lngx) / 10000.0;
+   *obliqnutation = (obl + t * oblx) / 10000.0;
+
+   return 0;
+}
+
+/********fund_args */
+
+static void fund_args (double t,
+
+                double a[5])
+/*
+------------------------------------------------------------------------
+
+   PURPOSE:
+      To compute the fundamental arguments.
+
+   REFERENCES:
+      Seidelmann, P.K. (1982) Celestial Mechanics 27, 79-106 (1980 IAU 
+         Theory of Nutation).
+
+   INPUT
+   ARGUMENTS:
+      t (double)
+         TDB time in Julian centuries since J2000.0
+
+   OUTPUT
+   ARGUMENTS:
+      a[5] (double)
+         Fundamental arguments, in radians:
+          a[0] = l (mean anomaly of the Moon)
+          a[1] = l' (mean anomaly of the Sun)
+          a[2] = F (L - omega; L = mean longitude of the Moon)
+          a[3] = D (mean elongation of the Moon from the Sun)
+          a[4] = omega (mean longitude of the Moon's ascending node)
+
+   RETURNED
+   VALUE:
+      None.
+
+   GLOBALS
+   USED:
+      TWOPI
+
+   FUNCTIONS
+   CALLED:
+      fmod     math.h
+
+   VER./DATE/
+   PROGRAMMER:
+      V1.0/10-97/JAB (USNO/AA)
+      V1.1/07-98/JAB (USNO/AA): Place arguments in the range 0-TWOPI
+                                radians.
+
+   NOTES:
+      1. The fundamental arguments are used in computing the nutation
+      angles and in the expression for sidereal time.
+
+------------------------------------------------------------------------
+*/
+{
+   short int i;
+
+   a[0] = 2.3555483935439407 + t * (8328.691422883896
+                             + t * (1.517951635553957e-4
+                             + 3.1028075591010306e-7 * t));
+   a[1] = 6.240035939326023 + t * (628.3019560241842
+                            + t * (-2.7973749400020225e-6
+                            - 5.817764173314431e-8 * t));
+   a[2] = 1.6279019339719611 + t * (8433.466158318453 
+                             + t * (-6.427174970469119e-5
+                             + 5.332950492204896e-8 * t));
+   a[3] = 5.198469513579922 + t * (7771.377146170642
+                            + t * (-3.340851076525812e-5
+                            + 9.211459941081184e-8 * t));
+   a[4] = 2.1824386243609943 + t * (-33.75704593375351
+                             + t * (3.614285992671591e-5
+                             + 3.878509448876288e-8 * t));
+
+   for (i = 0; i < 5; i++)
+   {
+      a[i] = fmod (a[i],TWOPI);
+      if (a[i] < 0.0)
+         a[i] += TWOPI; 
+   }
+
+   return;
+}
+
+/********radec2vector */
+
+static void radec2vector (double ra, double dec, double dist,
+                   double *vector)
+/*
+------------------------------------------------------------------------
+
+   PURPOSE:    
+      Converts equatorial spherical coordinates to a vector (equatorial
+      rectangular coordinates).
+
+   REFERENCES: 
+      None.
+
+   INPUT
+   ARGUMENTS:
+      ra (double)
+         Right ascension (hours).
+      dec (double)
+         Declination (degrees).
+
+   OUTPUT
+   ARGUMENTS:
+      vector[3] (double)
+         Position vector, equatorial rectangular coordinates (AU).
+
+   RETURNED
+   VALUE:
+      (short int)
+         0...Everything OK.
+
+   GLOBALS
+   USED:
+      DEG2RAD
+
+   FUNCTIONS
+   CALLED:
+      cos     math.h
+      sin     math.h
+
+   VER./DATE/
+   PROGRAMMER:
+      V1.0/05-92/TKB (USNO/NRL Optical Interfer.) Translate Fortran.
+      V1.1/08-93/WTH (USNO/AA) Update to C Standards.
+
+   NOTES:
+      None.
+
+------------------------------------------------------------------------
+*/
+{
+
+   vector[0] = dist * cos (DEG2RAD * dec) * cos (DEG2RAD * 15.0 * ra);
+   vector[1] = dist * cos (DEG2RAD * dec) * sin (DEG2RAD * 15.0 * ra);
+   vector[2] = dist * sin (DEG2RAD * dec);
+
+   return;
+}
+
+/********tdb2tdt */
+
+static void tdb2tdt (double tdb,
+
+              double *tdtjd, double *secdiff)
+/*
+------------------------------------------------------------------------
+
+   PURPOSE:    
+      Computes the terrestrial time (TT) or terrestrial dynamical time 
+      (TDT) Julian date corresponding to a barycentric dynamical time 
+      (TDB) Julian date.
+
+   REFERENCES: 
+      Explanatory Supplement to the Astronomical Almanac, pp. 42-44 and 
+         p. 316.
+
+   INPUT
+   ARGUMENTS:
+      tdb (double)
+         TDB Julian date.
+
+   OUTPUT
+   ARGUMENTS:
+      *tdtjd (double)
+         TT (or TDT) Julian date.
+      *secdiff (double)
+         Difference tdbjd-tdtjd, in seconds.
+
+   RETURNED
+   VALUE:
+      None.
+
+   GLOBALS
+   USED:
+      RAD2SEC, T0
+
+   FUNCTIONS
+   CALLED:
+      sin   math.h
+      fmod  math.h
+
+   VER./DATE/
+   PROGRAMMER:
+      V1.0/07-92/TKB (USNO/NRL Optical Interfer.) Translate Fortran.
+      V1.1/08-93/WTH (USNO/AA) Update to C Standards.
+      V1.2/06-98/JAB (USNO/AA) New algorithm (see reference).
+
+   NOTES:
+      1. Expressions used in this version are approximations resulting
+      in accuracies of about 20 microseconds.
+      2. This function is the "C" version of Fortran NOVAS routine
+      'times'.
+------------------------------------------------------------------------
+*/
+{
+
+/*
+   'ecc' = eccentricity of earth-moon barycenter orbit.
+*/
+
+   double ecc = 0.01671022;
+   double rev = 1296000.0;
+   double tdays, m, l, lj, e;
+
+   tdays = tdb - T0;
+   m = ( 357.51716 + 0.985599987 * tdays ) * 3600.0;
+   l = ( 280.46435 + 0.985609100 * tdays ) * 3600.0;
+   lj = ( 34.40438 + 0.083086762 * tdays ) * 3600.0;
+   m = fmod (m,rev) / RAD2SEC;
+   l = fmod (l,rev) / RAD2SEC;
+   lj = fmod (lj,rev) / RAD2SEC;
+   e = m + ecc * sin (m) + 0.5 * ecc * ecc * sin (2.0 * m);
+   *secdiff = 1.658e-3 * sin (e) + 20.73e-6 * sin (l - lj);
+   *tdtjd = tdb - *secdiff / 86400.0;
+
+    return;
+}
+
+/********julian_date */
+
+static double julian_date (short int year, short int month, short int day,
+                    double hour)
+/*
+------------------------------------------------------------------------
+
+   PURPOSE:
+      This function will compute the Julian date for a given calendar
+      date (year, month, day, hour).
+
+   REFERENCES: 
+      Fliegel & Van Flandern, Comm. of the ACM, Vol. 11, No. 10, October
+      1968, p. 657.
+
+   INPUT
+   ARGUMENTS:
+      year (short int)
+         Year.
+      month (short int)
+         Month number.
+      day (short int)
+         Day-of-month.
+      hour (double)
+         Hour-of-day.
+
+   OUTPUT
+   ARGUMENTS:
+      None.
+
+   RETURNED
+   VALUE:
+      (double)
+         Julian date.
+
+   GLOBALS
+   USED:
+      None.
+
+   FUNCTIONS
+   CALLED:
+      None.
+
+   VER./DATE/
+   PROGRAMMER:
+      V1.0/06-98/JAB (USNO/AA)
+
+   NOTES:
+      1. This function is the "C" version of Fortran NOVAS routine
+      'juldat'.
+      2. This function makes no checks for a valid input calendar
+      date.
+------------------------------------------------------------------------
+*/
+{
+   long int jd12h;
+
+   double tjd;
+
+   jd12h = (long) day - 32075L + 1461L * ((long) year + 4800L
+      + ((long) month - 14L) / 12L) / 4L
+      + 367L * ((long) month - 2L - ((long) month - 14L) / 12L * 12L)
+      / 12L - 3L * (((long) year + 4900L + ((long) month - 14L) / 12L)
+      / 100L) / 4L;
+   tjd = (double) jd12h - 0.5 + hour / 24.0;
+
+   return (tjd);
+}
+
+/********cal_date */
+
+static void cal_date (double tjd,
+               short int *year, short int *month, short int *day,
+               double *hour)
+/*
+------------------------------------------------------------------------
+
+   PURPOSE:    
+      This function will compute a date on the Gregorian calendar given
+      the Julian date.
+
+   REFERENCES: 
+      Fliegel & Van Flandern, Comm. of the ACM, Vol. 11, No. 10,
+         October 1968, p. 657.
+
+   INPUT
+   ARGUMENTS:
+      tjd (double)
+         Julian date.
+
+   OUTPUT
+   ARGUMENTS:
+      *year (short int)
+         Year.
+      *month (short int)
+         Month number.
+      *day (short int)
+         Day-of-month.
+      *hour (double)
+         Hour-of-day.
+
+   RETURNED
+   VALUE:
+      None.
+
+   GLOBALS
+   USED:
+      None.
+
+   FUNCTIONS
+   CALLED:
+      fmod     math.h
+
+   VER./DATE/
+   PROGRAMMER:
+      V1.0/06-98/JAB (USNO/AA)
+
+   NOTES:
+      1. This routine valid for any 'jd' greater than zero.
+      2. Input julian date can be based on any UT-like time scale
+      (UTC, UT1, TT, etc.) - output time value will have same basis.
+      3. This function is the "C" version of Fortran NOVAS routine
+      'caldat'.
+
+
+------------------------------------------------------------------------
+*/
+{
+   long int jd, k, m, n;
+
+   double djd;
+
+   djd = tjd + 0.5;
+   jd = (long int) djd;
+
+   *hour = fmod (djd,1.0) * 24.0;
+
+   k     = jd + 68569L;
+   n     = 4L * k / 146097L;
+
+   k     = k - (146097L * n + 3L) / 4L;
+   m     = 4000L * (k + 1L) / 1461001L;
+   k     = k - 1461L * m / 4L + 31L;
+
+   *month = (short int) (80L * k / 2447L);
+   *day   = (short int) (k - 2447L * (long int) *month / 80L);
+   k      = (long int) *month / 11L;
+
+   *month = (short int) ((long int) *month + 2L - 12L * k);
+   *year  = (short int) (100L * (n - 49L) + m + k);
+
+   return;
+}
+
+//===========================================================================
+//  End of novas.cpp
+//===========================================================================
+
+//===========================================================================
+// Copyright (c) 2000-2006, by Zhuo Meng (zhuo@thunder.cwru.edu).
+//
+// mphases.h
+//
+// Computes the julian dates (Beijing Time) of a given moon phase (0-3, for
+// new moon to last quarter) between two given time marks
+//===========================================================================
+
+/* Inputs:
+   tstart, start of the period in julian date (Beijing Time)
+   tend, end of the period in julian date (Beijing Time)
+   phase, the desired phase, 0-3 for new moon to last quarter
+   Output:
+   vjdphases, the julian dates (Beijing Time) of all occurings of the
+              desired phase
+*/
+static void mphases(double tstart, double tend, int phase, vdouble& vjdphases);
+
+//===========================================================================
+//  End of mphases.h
+//===========================================================================
+
+//===========================================================================
+// Copyright (c) 2000-2006, by Zhuo Meng (zhuo@thunder.cwru.edu).
+//
+// mphases.cpp
+//===========================================================================
+
+/* Inputs:
+   tstart, start of the period in julian date (Beijing Time)
+   tend, end of the period in julian date (Beijing Time)
+   phase, the desired phase, 0-3 for new moon to last quarter
+   Output:
+   vjdphases, the julian dates (Beijing Time) of all occurings of the
+              desired phase
+*/
+static void mphases(double tstart, double tend, int phase, vdouble& vjdphases)
+{
+    double offs;
+    if (tstart < 2425245) /* Before 1928 */
+        offs = (116.0 + 25.0 / 60.0) / 360.0;
+    else
+        offs = 120.0 / 360.0;
+/* Find the lunation number of the first given phase after tstart */
+    double period = 29.53058853;
+    int lun = (int) ((tstart - offs - 2451550.09765 - phase * 7.375) / period);
+    double jd1 = moonphasebylunation(lun, phase) + offs;
+    while (jd1 - tstart > 29)
+    {
+        lun--;
+        jd1 = moonphasebylunation(lun, phase) + offs;
+    }
+    while (tstart > jd1)
+    {
+        lun++;
+        jd1 = moonphasebylunation(lun, phase) + offs;
+    }
+/* Compute subsequent phases until after tend */
+    vjdphases.erase(vjdphases.begin(), vjdphases.end());
+    vjdphases.push_back(jd1);
+    while (jd1 < tend - 29)
+    {
+        lun++;
+        jd1 = moonphasebylunation(lun, phase) + offs;
+        if (jd1 < tend)
+            vjdphases.push_back(jd1);
+    }
+}
+
+//===========================================================================
+//  End of mphases.cpp
+//===========================================================================
+
+//===========================================================================
+// Copyright (c) 2000-2006, by Zhuo Meng (zhuo@thunder.cwru.edu).
+//
+// solarterm.h
+//
+// Computes Beijing time of solarterms for a given year
+//===========================================================================
+
+/* Given year, computes the julian date (Beijing Time) of the winter solstice
+   of previous year (jdpws) and all solarterms of the given year (vjdterms)
+*/
+static void solarterm(short int year, double& jdpws, vdouble& vjdterms);
+
+//===========================================================================
+//  End of solarterm.h
+//===========================================================================
+
+//===========================================================================
+// Copyright (c) 2000-2006, by Zhuo Meng (zhuo@thunder.cwru.edu).
+//
+// solarterm.cpp
+//===========================================================================
+
+#define PI 3.141592653589793
+
+/* Computes the angle in degrees of given UTC time,
+   with 0 being winter solstice
+*/
+static double timeangle(double t)
+{
+    double sposg[3], spos[3];
+    double eposb[3], evelb[3], eposh[3], evelh[3];
+    double y, angle;
+    double dummy, secdiff, tdb, lighttime;
+
+    tdb2tdt(t, &dummy, &secdiff);
+    tdb = t + secdiff / 86400.0;
+    solarsystem(tdb, 3, HELIOC, eposh, evelh);
+    solarsystem(tdb, 3, BARYC, eposb, evelb);
+    /* Convert to geocentric sun position */
+    spos[0] = -eposh[0];
+    spos[1] = -eposh[1];
+    spos[2] = -eposh[2];
+    lighttime = sqrt(spos[0]*spos[0] + spos[1]*spos[1] + spos[2]*spos[2]) / C;
+    aberration(spos, evelb, lighttime, sposg);
+    precession(T0, sposg, tdb, spos);
+    nutate(tdb, FN0, spos, sposg);
+    y = sqrt(sposg[1] * sposg[1] + sposg[2] * sposg[2]);
+    y *= (sposg[1] > 0.0) ? 1.0 : -1.0;
+    angle = atan2(y, sposg[0]) + PI / 2.0;   
+    if (angle < 0.0)
+        angle += 2.0 * PI;
+    angle *= 180.0 / PI;
+    return angle;
+}
+
+/* Computes the UTC time for given solar term:
+   tstart:  search start time
+   tend:    search end time
+   termang: angle value of the given term
+   returns the UTC time for the solar term
+*/
+static double termtime(double tstart, double tend, double termang)
+{
+    double errlimit;
+    double tl, tu, tdif, f;
+    double vs, ve, vl, vu;
+
+    errlimit = 1.0 / 2880.0; /* Half a minute */
+    f = (sqrt(5.0) - 1.0) / 2.0;
+    vs = fabs(timeangle(tstart) - termang);
+    ve = fabs(timeangle(tend) - termang);
+    tdif = f * (tend - tstart);
+    tl = tend - tdif;
+    tu = tstart + tdif;
+    vl = fabs(timeangle(tl) - termang);
+    vu = fabs(timeangle(tu) - termang);
+    while (tend - tstart > errlimit)
+    {
+        if (vl < vu && vl < vs && vl < ve ||
+            vs < vu && vs < vl && vs < ve)
+        {
+            tend = tu;
+            ve = vu;
+            tu = tl;
+            vu = vl;
+            tdif = f * (tend - tstart);
+            tl = tend - tdif;
+            vl = fabs(timeangle(tl) - termang);
+        }
+        else
+        {
+            tstart = tl;
+            vs = vl;
+            tl = tu;
+            vl = vu;
+            tdif = f * (tend - tstart);
+            tu = tstart + tdif;
+            vu = fabs(timeangle(tu) - termang);
         }
     }
-
-    iLength += pos;
-
-    return result;
+    return (tstart + tend) / 2.0;
 }
 
-/* constants, in 1/18th of minute */
-static const int HOUR = 1080;
-static const int DAY = 24*HOUR;
-static const int WEEK = 7*DAY;
-#define M(h,p) ((h)*HOUR+p)
-#define MONTH (DAY+M(12,793))
-
-/**
- * @internal
- * no. of days in y years
- */
-static int hebrewDaysElapsed( int y )
+/* Given year, computes the julian date (Beijing Time) of the winter solstice
+   of previous year (jdpws) and all solarterms of the given year (vjdterms)
+*/
+static void solarterm(short int year, double& jdpws, vdouble& vjdterms)
 {
-    int m, nm, dw, s, l;
+    int dstart, dend;
+    short int j, month, day;
+    double angle, offs;
 
-    l = y * 7 + 1;  // no. of leap months
-    m = y * 12 + l / 19;  // total no. of months
-    l %= 19;
-    nm = m * MONTH + M( 1 + 6, 779 ); // molad new year 3744 (16BC) + 6 hours
-    s = m * 28 + nm / DAY - 2;
-
-    nm %= WEEK;
-    dw = nm / DAY;
-    nm %= DAY;
-
-    // special cases of Molad Zaken
-    if ( l < 12 && dw == 3 && nm >= M( 9 + 6, 204 ) ||
-            l < 7 && dw == 2 && nm >= M( 15 + 6, 589 ) ) {
-        s++, dw++;
+    if (year < 1928)
+        offs = (116.0 + 25.0 / 60.0) / 360.0;
+    else
+        offs = 120.0 / 360.0;
+    /* Determine the time of winter solstice of previous year */
+    dstart = (int) julian_date(year - 1, 12, 18, 12.0);
+    dend = (int) julian_date(year - 1, 12, 25, 12.0);
+    jdpws = termtime(dstart, dend, 0.0) + offs;
+    vjdterms.resize(24);
+    for (j = 0; j < 24; j++)
+    {
+        month = j / 2 + 1;
+        day = (j % 2) * 14;
+        dstart = (int) julian_date(year, month, 1 + day, 12.0);
+        dend = (int) julian_date(year, month, 10 + day, 12.0);
+        angle = (j + 1) * 15.0;
+        vjdterms[j] = termtime(dstart, dend, angle) + offs;
     }
-
-    /* ADU */
-    if ( dw == 1 || dw == 4 || dw == 6 ) {
-        s++;
-    }
-    return s;
-}
-
-/**
- * @internal
- * true if long Cheshvan
- */
-static int long_cheshvan( int year )
-{
-    QDate first, last;
-    class h_date *gd;
-
-    gd = hebrewToGregorian( year, 1, 1 );
-    first.setYMD( gd->hd_year, gd->hd_mon + 1, gd->hd_day + 1 );
-
-    gd = hebrewToGregorian( year + 1, 1, 1 );
-    last.setYMD( gd->hd_year, gd->hd_mon + 1, gd->hd_day + 1 );
-
-    return ( first.daysTo( last ) % 10 == 5 );
-}
-
-/**
- * @internal
- * true if short Kislev
- */
-static int short_kislev( int year )
-{
-    QDate first, last;
-    class h_date * gd;
-
-    gd = hebrewToGregorian( year, 1, 1 );
-    first.setYMD( gd->hd_year, gd->hd_mon + 1, gd->hd_day + 1 );
-
-    gd = hebrewToGregorian( year + 1, 1, 1 );
-    last.setYMD( gd->hd_year, gd->hd_mon + 1, gd->hd_day + 1 );
-
-    return ( first.daysTo( last ) % 10 == 3 );
-}
-
-static bool is_leap_year( int year )
-{
-    return ( ( ( ( 7 * year ) + 1 ) % 19 ) < 7 );
-}
-
-// Ok
-static class h_date *toHebrew( const QDate &date )
-{
-    class h_date *sd;
-
-    sd = gregorianToHebrew( date.year(), date.month(), date.day() );
-    ++sd->hd_mon;
-    ++sd->hd_day;
-
-    return sd;
 }
 
 //===========================================================================
-//  End of old code
+//  End of solarterm.cpp
 //===========================================================================
 
-class KCalendarSystemHebrewPrivate
-{
-public:
-    int characterOfYear( int year ) const;
-    int julianDayOfTishri1( int year ) const;
-    int yearOfJulianDay( int jd ) const;
-    int daysPreceedingMonth( int character, int month ) const;
+//===========================================================================
+// Copyright (c) 2000-2006, by Zhuo Meng (zhuo@thunder.cwru.edu).
+//
+// lunaryear.h
+//
+// Determines the lunar month numbers for a given year
+//===========================================================================
 
-    /**
-     * Gets the number of days in a month for a given date
-     *
-     * @param year given year
-     * @param mon month number
-     * @return number of days in month
-     */
-    int hndays( int year, int mon ) const;
+/* Inputs:
+   year
+   Outputs:
+   vterms, vector of solarterm times for the given year
+   lastnew, julian day of last new moon for previous year
+   lastmon, month number for that started on last new moon day of previous year
+   vmoons, vector of new moon times for the given year
+   vmonth, vector of lunar month numbers for the given year with half
+           advance for leap month, i.e. 7.5 for leap 7th month
+   nextnew, julian day of first new moon for next year
+   Returns:
+   calendar month number in which a leap lunar month begins with 0.5 added if
+   this leap lunar month runs into next calendar month
+*/
+
+static double lunaryear(short int year, vdouble& vterms, double& lastnew,
+                 double& lastmon, vdouble& vmoons, vdouble& vmonth,
+                 double& nextnew);
+
+//===========================================================================
+//  End of lunaryear.h
+//===========================================================================
+
+//===========================================================================
+// Copyright (c) 2000-2006, by Zhuo Meng (zhuo@thunder.cwru.edu).
+//
+// lunaryear.cpp
+//===========================================================================
+
+/* Inputs:
+   jdws, Time of winter solstice of given year
+   vmoons, vector of new moon times since day after winter solstice of
+           previous year
+   Returns:
+   true -- normal year, false -- leap year
+*/
+static bool IsNormalYear(double jdws, vdouble& vmoons)
+{
+    size_t i = 0, nmonth = 0;
+    double jend = jdws + 0.5;
+    jend = int(jend) + 0.5;
+    while (vmoons[i++] < jend && i <= vmoons.size())
+        nmonth++;
+    //assert(nmonth == 12 || nmonth == 13);
+    if (nmonth == 12) /* Normal year */
+      return true;
+    return false;
+}
+
+/* Inputs:
+   jstart, time of new moon for the starting of the month
+   jend, time of new moon for the starting of the next month
+   vterms, vector of solarterms of the given year
+   Returns:
+   true -- a Zhongqi is in, false -- no Zhongqi
+*/
+static bool IsZhongQiInMonth(double jstart, double jend, vdouble& vterms)
+{
+    jstart -= 0.5;
+    jstart = int(jstart) + 0.5;
+    jend -= 0.5;
+    jend = int(jend) + 0.5;
+    size_t i;
+    for (i = 1; i < vterms.size(); i += 2)
+    {
+        if (vterms[i] >= jstart && vterms[i] < jend)
+            return true;
+        if (vterms[i] >= jend)
+            return false;
+    }
+    return false;
+}
+
+/* Inputs:
+   vjds, vector of julian dates to have the hour portion trimmed
+   Outputs:
+   vjds, vector of julian dates with the hour portion trimmed
+*/
+static void TrimHour(vdouble& vjds)
+{
+    size_t i, t;
+    for (i = 0; i < vjds.size(); i++)
+    {
+        t = size_t(vjds[i] + 0.5);
+        vjds[i] = double(t);
+    }
+}
+
+/* Inputs:
+   year
+   Outputs:
+   vterms, vector of solarterm days for the given year
+   lastnew, julian day for the last new moon of previous year
+   lastmon, month number for that started on last new moon day of previous year
+   vmoons, vector of new moon days for the given year
+   vmonth, vector of lunar month numbers for the given year with half
+           advance for leap month, i.e. 7.5 for leap 7th month
+   nextnew, julian day for the first new moon of next year
+   Returns:
+   calendar month number in which a leap lunar month begins with 0.5 added if
+   this leap lunar month runs into next calendar month
+*/
+static double lunaryear(short int year, vdouble& vterms, double& lastnew,
+                 double& lastmon, vdouble& vmoons, vdouble& vmonth,
+                 double& nextnew)
+{
+#ifdef USE_YEARCACHE
+    /* Use cache if in range */
+    if (YearCache::IsInRange(year)) /* Cached year */
+    {
+        YearCache::GetYear(year, vterms, lastnew, lastmon, vmoons, vmonth,
+                           nextnew);
+    }
+    else
+#endif
+    {
+        /* Determine solar terms */
+        double jdpws;
+        solarterm(year, jdpws, vterms);
+        /* Determine new moons since day after previous winter solstice */
+        double jstart = jdpws + 0.5;
+        jstart = int(jstart) + 0.5;
+        double jend = julian_date(year, 12, 31, 23.999);
+        mphases(jstart, jend, 0, vmoons);
+        /* Determine the month numbers */
+        vmonth.resize(vmoons.size());
+        size_t i;
+        if (IsNormalYear(vterms[23], vmoons)) /* Normal year */
+        {
+            size_t n = 12;
+            for (i = 0; i < vmoons.size(); i++)
+            {
+                vmonth[i] = n;
+                if (n == 12)
+                    n = 0;
+                n++;
+            }
+            if (n == 1) /* Involves next lunar year */
+            {
+                double jdnwsp;
+                vdouble vjdnterms;
+                solarterm(year + 1, jdnwsp, vjdnterms);
+                vdouble vnmoons;
+                jstart = jdnwsp + 0.5;
+                jstart = int(jstart) + 0.5;
+                jend = julian_date(year + 1, 12, 31, 23.999);
+                mphases(jstart, jend, 0, vnmoons);
+                if (!IsNormalYear(vjdnterms[23], vnmoons))
+                {
+                    /* Check if a zhongqi falls inside the month */
+                    if (!IsZhongQiInMonth(vnmoons[0], vnmoons[1], vjdnterms))
+                        vmonth.back() = 11.5;
+                }
+            }
+        }
+        else /* Leap year */
+        {
+            bool bleaped = false;
+            size_t n = 11;
+            for (i = 0; i < vmoons.size() - 1; i++)
+            {
+                /* Check if a zhongqi falls inside the month */
+                if (bleaped || IsZhongQiInMonth(vmoons[i], vmoons[i + 1], vterms))
+                    vmonth[i] = ++n;
+                else
+                {
+                    vmonth[i] = n + 0.5;
+                    bleaped = true;
+                }
+                if (n == 12)
+                    n = 0;
+            }
+            vmonth.back() = n + 1;
+        }
+        if (vmoons[0] < julian_date(year, 1, 1, 0.0))
+        {
+            lastnew = floor(vmoons.front() + 0.5);
+            lastmon = vmonth.front();
+            vmoons.erase(vmoons.begin());
+            vmonth.erase(vmonth.begin());
+        }
+        else /* Need to find the last new moon for previous year */
+        {
+            vdouble vlastnew;
+            mphases(vmoons[0] - 35.0, vmoons[0] - 25.0, 0, vlastnew);
+            TrimHour(vlastnew);
+            lastnew = vlastnew.back();
+            lastmon = 11.0;
+        }
+        /* Need to find the first new moon for next year */
+        vdouble vnextnew;
+        mphases(vmoons.back() + 25.0, vmoons.back() + 35.0, 0, vnextnew);
+        TrimHour(vnextnew);
+        nextnew = vnextnew.back();
+        /* Convert to whole day numbers */
+        TrimHour(vmoons);
+        TrimHour(vterms);
+    }
+    /* Scan for leap month and return the calendar month */
+    if (int(lastmon + 0.9) != int(lastmon)) /* lastmon is a leap month */
+    {
+        if (julian_date(year, 1, 1, 12.0) < vmoons[0]) /* runs into new year */
+            return 0.5;
+    }
+    short int monnum = 2;
+  size_t i;
+    for (i = 0; i < vmoons.size(); i++)
+    {
+        if (int(vmonth[i] + 0.9) != int(vmonth[i])) /* found leap month */
+        {
+            double jdfirst;
+            while (monnum <= 12 && (jdfirst = julian_date(year, monnum, 1, 12.0)) < vmoons[i])
+                monnum++;
+            if (monnum == 13)
+                return 12.0;
+            /* See if leap month runs into next month */
+            if (i != vmoons.size() - 1 && jdfirst < vmoons[i + 1])
+                return (monnum - 0.5); /* Yes */
+            else
+                return (monnum - 1.0); /* No */
+        }
+    }
+    return 0.0;
+}
+
+//===========================================================================
+//  End of lunaryear.cpp
+//===========================================================================
+
+class KCalendarSystemChinesePrivate
+{
 };
 
-int KCalendarSystemHebrewPrivate::daysPreceedingMonth( int character, int month ) const
-{
-    // FIXME move to Private class header as static when figure out how to do it without compiler errors :-)
-    int daysPreceedingMonthTable[6][13] =
-        {
-            {0, 30, 59, 88, 117, 147, 176, 206, 235, 265, 294, 324, },
-            {0, 30, 59, 89, 118, 148, 177, 207, 236, 266, 295, 325, },
-            {0, 30, 60, 90, 119, 149, 178, 208, 237, 267, 296, 326, },
-            {0, 30, 59, 88, 117, 147, 177, 206, 236, 265, 295, 324, 354},
-            {0, 30, 59, 89, 118, 148, 178, 207, 237, 266, 296, 325, 355},
-            {0, 30, 60, 90, 119, 149, 179, 209, 238, 267, 297, 326, 356},
-        };
-
-    if ( character >= 1 && character <= 6  && month >= 1 && month <= 13 ) {
-        return daysPreceedingMonthTable[character-1][month-1];
-    }
-    return -911;
-}
-
-int KCalendarSystemHebrewPrivate::characterOfYear( int year ) const
-{
-    int jdTishri1ThisYear = julianDayOfTishri1( year );
-    int jdTishri1NextYear = julianDayOfTishri1( year + 1 );
-    int K = jdTishri1NextYear - jdTishri1ThisYear - 352
-            - 27 * ( ( 7 * year + 13 ) % 19 ) / 12;
-    return K;
-}
-
-// Hatcher formula G
-int KCalendarSystemHebrewPrivate::julianDayOfTishri1( int year ) const
-{
-    // if calc of t overflows, have alternative formula for step
-    long t = 31524 + 765433 * ( ( 235 * year - 234 ) / 19 );
-    int d = t / 25920;
-    int t1 = t % 25920;
-    int w = 1 + ( d % 7 );
-    int E = ( ( 7 * year + 13 ) % 19 ) / 12;
-    int E1 = ( ( 7 * year + 6 ) % 19 ) / 12;
-    if (  t1 >= 19940 ||
-            ( t1 >= 9924 && w == 3 && E == 0 ) ||
-            ( t1 >= 16788 && w == 2 && E == 0 && E1 == 1 ) ) {
-        d = d + 1;
-    }
-    int jd = d + ( ( ( d + 5 ) % 7 ) % 2 ) + 347997;
-    return jd;
-}
-
-// Hatcher formula H
-int KCalendarSystemHebrewPrivate::yearOfJulianDay( int jd ) const
-{
-    long M = ( 25920 * ( jd - 347996 ) ) / 765433 + 1;
-    int year = 19 * ( M / 235 ) + ( 19 * ( M % 2356 ) - 2 ) / 235 + 1;
-    if ( julianDayOfTishri1( year ) > jd ) {
-        year = year - 1;
-    }
-    return year;
-}
-
-int KCalendarSystemHebrewPrivate::hndays( int mon, int year ) const
-{
-    if ( mon == 6 && is_leap_year( year ) ) {
-        mon = 13; /*Adar I*/
-    } else if ( mon == 7 && is_leap_year( year ) ) {
-        mon = 14; /*Adar II*/
-    } else if ( mon > 7 && is_leap_year( year ) ) {
-        mon--; //Because of Adar II
-    }
-
-    if( mon == 8 /*IYYAR*/ || mon == 10 /*TAMUZ*/ ||
-            mon == 12 /*ELUL*/ || mon == 4 /*TEVET*/ ||
-            mon == 14 /*ADAR 2*/ ||
-            ( mon == 6 /*ADAR*/ && !is_leap_year( year ) ) ||
-            ( mon ==  2 /*CHESHVAN*/ && !long_cheshvan( year ) ) ||
-            ( mon == 3 /*KISLEV*/ && short_kislev( year ) ) ) {
-        return 29;
-    } else {
-        return 30;
-    }
-}
-
-// Ok
-KCalendarSystemHebrew::KCalendarSystemHebrew( const KLocale * locale )
-        : KCalendarSystem( locale ), d( new KCalendarSystemHebrewPrivate )
+KCalendarSystemChinese::KCalendarSystemChinese( const KLocale * locale )
+        : KCalendarSystem( locale ), d( new KCalendarSystemChinesePrivate )
 {
 }
 
 // Ok
-KCalendarSystemHebrew::~KCalendarSystemHebrew()
+KCalendarSystemChinese::~KCalendarSystemChinese()
 {
     delete d;
 }
 
-QString KCalendarSystemHebrew::calendarType() const
+QString KCalendarSystemChinese::calendarType() const
 {
-    return QLatin1String( "hebrew" );
+    return QLatin1String( "chinese" );
 }
 
-QDate KCalendarSystemHebrew::epoch() const
+/*
+QDate KCalendarSystemChinese::epoch() const
 {
     return QDate::fromJulianDay( 347998 );
 }
+*/
 
-QDate KCalendarSystemHebrew::earliestValidDate() const
+QDate KCalendarSystemChinese::earliestValidDate() const
 {
-    return KCalendarSystem::earliestValidDate();
+    // The limitation is from ccal
+    return QDate( 1645, 1, 1);
 }
 
-QDate KCalendarSystemHebrew::latestValidDate() const
+QDate KCalendarSystemChinese::latestValidDate() const
 {
     // Set to last day of year 9999 until confirm date formats & widets support > 9999
-    // Last day of Hebrew year 9999 is 9999-12-29
+    // Last day of Chinese year 9999 is 9999-12-30
     // Which in Gregorian is 6239-09-25
     // Which is jd xxxx FIXME Find out jd and use that instead
     // Can't call setDate( 9999, 12, 29 ) as it creates circular reference!
-    return QDate( 6239, 9, 25 );
+    return QDate( 7303, 2, 5 );
 }
 
-bool KCalendarSystemHebrew::isValid( int y, int month, int day ) const
+bool KCalendarSystemChinese::isValid( int y, int month, int day ) const
 {
     // taken from setYMD below, adapted to use new methods
     if ( y < year( earliestValidDate() ) || y > year( latestValidDate() ) ) {
@@ -498,18 +2521,18 @@ bool KCalendarSystemHebrew::isValid( int y, int month, int day ) const
     return true;
 }
 
-bool KCalendarSystemHebrew::isValid( const QDate &date ) const
+bool KCalendarSystemChinese::isValid( const QDate &date ) const
 {
     return KCalendarSystem::isValid( date );
 }
 
-bool KCalendarSystemHebrew::setDate( QDate &date, int year, int month, int day ) const
+bool KCalendarSystemChinese::setDate( QDate &date, int year, int month, int day ) const
 {
     return KCalendarSystem::setDate( date, year, month, day );
 }
 
 // Deprecated
-bool KCalendarSystemHebrew::setYMD( QDate & date, int y, int m, int day ) const
+bool KCalendarSystemChinese::setYMD( QDate & date, int y, int m, int day ) const
 {
     // range checks
     // Removed deleted minValidYear and maxValidYear methods
@@ -533,13 +2556,13 @@ bool KCalendarSystemHebrew::setYMD( QDate & date, int y, int m, int day ) const
     return date.setYMD( gd->hd_year, gd->hd_mon + 1, gd->hd_day + 1 );
 }
 
-int KCalendarSystemHebrew::year( const QDate &date ) const
+int KCalendarSystemChinese::year( const QDate &date ) const
 {
     class h_date * sd = toHebrew( date );
     return sd->hd_year;
 }
 
-int KCalendarSystemHebrew::month( const QDate &date ) const
+int KCalendarSystemChinese::month( const QDate &date ) const
 {
     class h_date * sd = toHebrew( date );
 
@@ -557,14 +2580,14 @@ int KCalendarSystemHebrew::month( const QDate &date ) const
     return month;
 }
 
-int KCalendarSystemHebrew::day( const QDate &date ) const
+int KCalendarSystemChinese::day( const QDate &date ) const
 {
     class h_date * sd = toHebrew( date );
 
     return sd->hd_day;
 }
 
-QDate KCalendarSystemHebrew::addYears( const QDate &date, int nyears ) const
+QDate KCalendarSystemChinese::addYears( const QDate &date, int nyears ) const
 {
     QDate result = date;
     int y = year( date ) + nyears;
@@ -574,7 +2597,7 @@ QDate KCalendarSystemHebrew::addYears( const QDate &date, int nyears ) const
     return result;
 }
 
-QDate KCalendarSystemHebrew::addMonths( const QDate &date, int nmonths ) const
+QDate KCalendarSystemChinese::addMonths( const QDate &date, int nmonths ) const
 {
     QDate result = date;
 
@@ -594,12 +2617,12 @@ QDate KCalendarSystemHebrew::addMonths( const QDate &date, int nmonths ) const
     return result;
 }
 
-QDate KCalendarSystemHebrew::addDays( const QDate &date, int ndays ) const
+QDate KCalendarSystemChinese::addDays( const QDate &date, int ndays ) const
 {
     return date.addDays( ndays );
 }
 
-int KCalendarSystemHebrew::monthsInYear( const QDate &date ) const
+int KCalendarSystemChinese::monthsInYear( const QDate &date ) const
 {
     if ( is_leap_year( year( date ) ) ) {
         return 13;
@@ -608,13 +2631,13 @@ int KCalendarSystemHebrew::monthsInYear( const QDate &date ) const
     }
 }
 
-int KCalendarSystemHebrew::weeksInYear( const QDate &date ) const
+int KCalendarSystemChinese::weeksInYear( const QDate &date ) const
 {
     return KCalendarSystem::weeksInYear( date );
 }
 
 // Ok
-int KCalendarSystemHebrew::weeksInYear( int year ) const
+int KCalendarSystemChinese::weeksInYear( int year ) const
 {
     QDate temp;
     setYMD( temp, year, 1, 1 );  // don't pass an uninitialized QDate to
@@ -631,7 +2654,7 @@ int KCalendarSystemHebrew::weeksInYear( int year ) const
     return nWeekNumber;
 }
 
-int KCalendarSystemHebrew::daysInYear( const QDate &date ) const
+int KCalendarSystemChinese::daysInYear( const QDate &date ) const
 {
     QDate first, last;
 
@@ -641,17 +2664,17 @@ int KCalendarSystemHebrew::daysInYear( const QDate &date ) const
     return first.daysTo( last );
 }
 
-int KCalendarSystemHebrew::daysInMonth( const QDate &date ) const
+int KCalendarSystemChinese::daysInMonth( const QDate &date ) const
 {
     return d->hndays( month( date ), year( date ) );
 }
 
-int KCalendarSystemHebrew::daysInWeek( const QDate &date ) const
+int KCalendarSystemChinese::daysInWeek( const QDate &date ) const
 {
     return KCalendarSystem::daysInWeek( date );
 }
 
-int KCalendarSystemHebrew::dayOfYear( const QDate &date ) const
+int KCalendarSystemChinese::dayOfYear( const QDate &date ) const
 {
     QDate first;
 
@@ -660,7 +2683,7 @@ int KCalendarSystemHebrew::dayOfYear( const QDate &date ) const
     return first.daysTo( date ) + 1;
 }
 
-int KCalendarSystemHebrew::dayOfWeek( const QDate &date ) const
+int KCalendarSystemChinese::dayOfWeek( const QDate &date ) const
 {
     class h_date * sd = toHebrew( date );
     if ( sd->hd_dw == 0 ) {
@@ -670,7 +2693,7 @@ int KCalendarSystemHebrew::dayOfWeek( const QDate &date ) const
     }
 }
 
-int KCalendarSystemHebrew::weekNumber( const QDate &date, int *yearNum ) const
+int KCalendarSystemChinese::weekNumber( const QDate &date, int *yearNum ) const
 {
     QDate firstDayWeek1, lastDayOfYear;
     int y = year( date );
@@ -718,13 +2741,13 @@ int KCalendarSystemHebrew::weekNumber( const QDate &date, int *yearNum ) const
     return week;
 }
 
-bool KCalendarSystemHebrew::isLeapYear( int year ) const
+bool KCalendarSystemChinese::isLeapYear( int year ) const
 {
     // from is_leap_year above
     return ( ( ( ( 7 * year ) + 1 ) % 19 ) < 7 );
 }
 
-bool KCalendarSystemHebrew::isLeapYear( const QDate &date ) const
+bool KCalendarSystemChinese::isLeapYear( const QDate &date ) const
 {
     return QDate::isLeapYear( year( date ) );
 }
@@ -732,7 +2755,7 @@ bool KCalendarSystemHebrew::isLeapYear( const QDate &date ) const
 // ### Fixme
 // JPL Fix what?
 // Ask translators for short fomats of month names!
-QString KCalendarSystemHebrew::monthName( int month, int year, MonthNameFormat format ) const
+QString KCalendarSystemChinese::monthName( int month, int year, MonthNameFormat format ) const
 {
     if ( month < 1 ) {
         return QString();
@@ -822,47 +2845,47 @@ QString KCalendarSystemHebrew::monthName( int month, int year, MonthNameFormat f
     }
 }
 
-QString KCalendarSystemHebrew::monthName( const QDate& date, MonthNameFormat format ) const
+QString KCalendarSystemChinese::monthName( const QDate& date, MonthNameFormat format ) const
 {
     return monthName( month( date ), year( date ), format );
 }
 
-QString KCalendarSystemHebrew::weekDayName( int weekDay, WeekDayNameFormat format ) const
+QString KCalendarSystemChinese::weekDayName( int weekDay, WeekDayNameFormat format ) const
 {
     // Use Western day names for now as that's what the old version did,
     // but wouldn't it be better to use the right Hebrew names like Shabbat?
     // Could make it switchable by adding new enums to WeekDayFormat, e.g. ShortNameWestern?
     if ( format == ShortDayName ) {
         switch ( weekDay ) {
-        case 1:  return ki18nc( "Monday", "Mon" ).toString( locale() );
-        case 2:  return ki18nc( "Tuesday", "Tue" ).toString( locale() );
-        case 3:  return ki18nc( "Wednesday", "Wed" ).toString( locale() );
-        case 4:  return ki18nc( "Thursday", "Thu" ).toString( locale() );
-        case 5:  return ki18nc( "Friday", "Fri" ).toString( locale() );
-        case 6:  return ki18nc( "Saturday", "Sat" ).toString( locale() );
-        case 7:  return ki18nc( "Sunday", "Sun" ).toString( locale() );
+        case 1:  return ki18nc( "XingQiYI", "YI" ).toString( locale() );
+        case 2:  return ki18nc( "XingQiER", "ER" ).toString( locale() );
+        case 3:  return ki18nc( "XingQiSAN", "SAN" ).toString( locale() );
+        case 4:  return ki18nc( "XingQiSI", "SI" ).toString( locale() );
+        case 5:  return ki18nc( "XingQiWU", "WU" ).toString( locale() );
+        case 6:  return ki18nc( "XingQiLIU", "LIU" ).toString( locale() );
+        case 7:  return ki18nc( "XingQiRI", "RI" ).toString( locale() );
         default: return QString();
         }
     }
 
     switch ( weekDay ) {
-    case 1:  return ki18n( "Monday" ).toString( locale() );
-    case 2:  return ki18n( "Tuesday" ).toString( locale() );
-    case 3:  return ki18n( "Wednesday" ).toString( locale() );
-    case 4:  return ki18n( "Thursday" ).toString( locale() );
-    case 5:  return ki18n( "Friday" ).toString( locale() );
-    case 6:  return ki18n( "Saturday" ).toString( locale() );
-    case 7:  return ki18n( "Sunday" ).toString( locale() );
+    case 1:  return ki18n( "XingQiYI" ).toString( locale() );
+    case 2:  return ki18n( "XingQiER" ).toString( locale() );
+    case 3:  return ki18n( "XingQiSAN" ).toString( locale() );
+    case 4:  return ki18n( "XingQiSI" ).toString( locale() );
+    case 5:  return ki18n( "XingQiWU" ).toString( locale() );
+    case 6:  return ki18n( "XingQiLIU" ).toString( locale() );
+    case 7:  return ki18n( "XingQiRI" ).toString( locale() );
     default: return QString();
     }
 }
 
-QString KCalendarSystemHebrew::weekDayName( const QDate &date, WeekDayNameFormat format ) const
+QString KCalendarSystemChinese::weekDayName( const QDate &date, WeekDayNameFormat format ) const
 {
     return weekDayName( dayOfWeek( date ), format );
 }
 
-QString KCalendarSystemHebrew::yearString( const QDate &pDate, StringFormat format ) const
+QString KCalendarSystemChinese::yearString( const QDate &pDate, StringFormat format ) const
 {
     QString sResult;
 
@@ -878,12 +2901,12 @@ QString KCalendarSystemHebrew::yearString( const QDate &pDate, StringFormat form
     return sResult;
 }
 
-QString KCalendarSystemHebrew::monthString( const QDate &pDate, StringFormat format ) const
+QString KCalendarSystemChinese::monthString( const QDate &pDate, StringFormat format ) const
 {
     return KCalendarSystem::monthString( pDate, format );
 }
 
-QString KCalendarSystemHebrew::dayString( const QDate &pDate, StringFormat format ) const
+QString KCalendarSystemChinese::dayString( const QDate &pDate, StringFormat format ) const
 {
     QString sResult;
 
@@ -897,7 +2920,7 @@ QString KCalendarSystemHebrew::dayString( const QDate &pDate, StringFormat forma
     return sResult;
 }
 
-int KCalendarSystemHebrew::yearStringToInteger( const QString &sNum, int &iLength ) const
+int KCalendarSystemChinese::yearStringToInteger( const QString &sNum, int &iLength ) const
 {
     int iResult;
 
@@ -914,12 +2937,12 @@ int KCalendarSystemHebrew::yearStringToInteger( const QString &sNum, int &iLengt
     return iResult;
 }
 
-int KCalendarSystemHebrew::monthStringToInteger( const QString &sNum, int &iLength ) const
+int KCalendarSystemChinese::monthStringToInteger( const QString &sNum, int &iLength ) const
 {
     return KCalendarSystem::monthStringToInteger( sNum, iLength );
 }
 
-int KCalendarSystemHebrew::dayStringToInteger( const QString &sNum, int &iLength ) const
+int KCalendarSystemChinese::dayStringToInteger( const QString &sNum, int &iLength ) const
 {
     int iResult;
 
@@ -932,57 +2955,57 @@ int KCalendarSystemHebrew::dayStringToInteger( const QString &sNum, int &iLength
     return iResult;
 }
 
-QString KCalendarSystemHebrew::formatDate( const QDate &date, KLocale::DateFormat format ) const
+QString KCalendarSystemChinese::formatDate( const QDate &date, KLocale::DateFormat format ) const
 {
     return KCalendarSystem::formatDate( date, format );
 }
 
-QDate KCalendarSystemHebrew::readDate( const QString &str, bool *ok ) const
+QDate KCalendarSystemChinese::readDate( const QString &str, bool *ok ) const
 {
     return KCalendarSystem::readDate( str, ok );
 }
 
-QDate KCalendarSystemHebrew::readDate( const QString &intstr, const QString &fmt, bool *ok ) const
+QDate KCalendarSystemChinese::readDate( const QString &intstr, const QString &fmt, bool *ok ) const
 {
     return KCalendarSystem::readDate( intstr, fmt, ok );
 }
 
-QDate KCalendarSystemHebrew::readDate( const QString &str, KLocale::ReadDateFlags flags, bool *ok ) const
+QDate KCalendarSystemChinese::readDate( const QString &str, KLocale::ReadDateFlags flags, bool *ok ) const
 {
     return KCalendarSystem::readDate( str, flags, ok );
 }
 
-int KCalendarSystemHebrew::weekDayOfPray() const
+int KCalendarSystemChinese::weekDayOfPray() const
 {
-    return 6; // saturday
+    return 7; // sunday
 }
 
-int KCalendarSystemHebrew::weekStartDay() const
+int KCalendarSystemChinese::weekStartDay() const
 {
     return KCalendarSystem::weekStartDay();
 }
 
-bool KCalendarSystemHebrew::isLunar() const
+bool KCalendarSystemChinese::isLunar() const
 {
     return false;
 }
 
-bool KCalendarSystemHebrew::isLunisolar() const
+bool KCalendarSystemChinese::isLunisolar() const
 {
     return true;
 }
 
-bool KCalendarSystemHebrew::isSolar() const
+bool KCalendarSystemChinese::isSolar() const
 {
     return false;
 }
 
-bool KCalendarSystemHebrew::isProleptic() const
+bool KCalendarSystemChinese::isProleptic() const
 {
     return false;
 }
 
-bool KCalendarSystemHebrew::julianDayToDate( int jd, int &year, int &month, int &day ) const
+bool KCalendarSystemChinese::julianDayToDate( int jd, int &year, int &month, int &day ) const
 {
     if ( jd >= earliestValidDate().toJulianDay() && jd <= latestValidDate().toJulianDay() ) {
         // Hatcher formula I.  Fix me!
@@ -1006,7 +3029,7 @@ bool KCalendarSystemHebrew::julianDayToDate( int jd, int &year, int &month, int 
     return false;
 }
 
-bool KCalendarSystemHebrew::dateToJulianDay( int year, int month, int day, int &jd ) const
+bool KCalendarSystemChinese::dateToJulianDay( int year, int month, int day, int &jd ) const
 {
     // From Hatcher formula J.  Fix me!
     if ( isValid( year, month, day ) ) {

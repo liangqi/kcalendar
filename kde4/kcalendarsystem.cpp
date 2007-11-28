@@ -29,6 +29,7 @@
 #include "kcalendarsystemhebrew.h"
 #include "kcalendarsystemhijri.h"
 #include "kcalendarsystemjalali.h"
+#include "kcalendarsystemchinese.h"
 
 KCalendarSystem *KCalendarSystem::create( const QString &calendarType, const KLocale *locale )
 {
@@ -48,6 +49,10 @@ KCalendarSystem *KCalendarSystem::create( const QString &calendarType, const KLo
         return new KCalendarSystemJalali( locale );
     }
 
+    if ( calendarType == "chinese" ) {
+        return new KCalendarSystemChinese( locale );
+    }
+
     // ### HPB: Should it really be a default here?
     return new KCalendarSystemGregorian( locale );
 }
@@ -60,6 +65,7 @@ QStringList KCalendarSystem::calendarSystems()
     lst.append( "hijri" );
     lst.append( "gregorian" );
     lst.append( "jalali" );
+    lst.append( "chinese" );
 
     return lst;
 }
@@ -80,6 +86,10 @@ QString KCalendarSystem::calendarLabel( const QString &calendarType )
 
     if ( calendarType == "jalali" ) {
         return ki18nc( "@item Calendar system", "Jalali" ).toString( KGlobal::locale() );
+    }
+
+    if ( calendarType == "chinese" ) {
+        return ki18nc( "@item Calendar system", "Chinese" ).toString( KGlobal::locale() );
     }
 
     return ki18nc( "@item Calendar system", "Invalid Calendar Type" ).toString( KGlobal::locale() );

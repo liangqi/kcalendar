@@ -1,9 +1,13 @@
 /*
     Copyright (c) 2007 Liang Qi <cavendish.qi@gmail.com>
         Calendar conversion routines based on:
-        1. ccal 2.4 by Zhuo Meng
-        2.
-        3. 
+        1. ccal v2.4 by Zhuo Meng <zhuo@thunder.cwru.edu>
+        2. NOVAS-C v2.0 (1 Nov 98) by
+               U. S. Naval Observatory
+               Astronomical Applications Dept.
+               3450 Massachusetts Ave., NW
+               Washington, DC  20392-5420
+        3. Lunar Outreach Services by Christopher Osburn(1996)
  
     This library is free software; you can redistribute it and/or
     modify it under the terms of the GNU Library General Public
@@ -46,7 +50,7 @@ public:
 
     virtual QString calendarType() const;
 
-    virtual QDate epoch() const;
+    //virtual QDate epoch() const;
     virtual QDate earliestValidDate() const;
     virtual QDate latestValidDate() const;
     virtual bool isValid( int year, int month, int day ) const;

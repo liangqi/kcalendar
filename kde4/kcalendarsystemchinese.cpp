@@ -34,6 +34,7 @@
 
 #include <QtCore/QDate>
 #include <QtCore/QCharRef>
+#include <QtCore/QHash>
 
 #include <time.h>
 #include <stdio.h>
@@ -97,9 +98,11 @@ static    short int solarsystem (double tjd, short int body, short int origin,
 static    double julian_date (short int year, short int month, short int day,
                        double hour);
 
+/*
 static    void cal_date (double tjd,
                   short int *year, short int *month, short int *day,
                   double *hour);
+*/
 
 //===========================================================================
 //  End of novas.h
@@ -1928,9 +1931,12 @@ static double julian_date (short int year, short int month, short int day,
 
 /********cal_date */
 
+/*
 static void cal_date (double tjd,
                short int *year, short int *month, short int *day,
                double *hour)
+*/
+
 /*
 ------------------------------------------------------------------------
 
@@ -1984,6 +1990,7 @@ static void cal_date (double tjd,
 
 ------------------------------------------------------------------------
 */
+/*
 {
    long int jd, k, m, n;
 
@@ -2010,6 +2017,7 @@ static void cal_date (double tjd,
 
    return;
 }
+*/
 
 //===========================================================================
 //  End of novas.cpp
@@ -2463,19 +2471,182 @@ static double lunaryear(short int year, vdouble& vterms, double& lastnew,
 //  End of lunaryear.cpp
 //===========================================================================
 
-class KCalendarSystemChinesePrivate
-{
+class CMonthInfo {
+public:
+  double month;
+  int beginday; // julian day
+  int endday; // julian day
+  int total;
 };
 
+class CYearInfo {
+public:
+  int year;
+  bool leap;
+  double leapmonth;
+  int beginday; // julian day
+  int endday; // julian day
+  int total;
+  int firstweekday;
+  int lastweekday;
+  int totalweeks;
+  vector<CMonthInfo> monthinfos;
+};
+
+#define YEAR_INTERVAL 2697
+
+static class CYearInfo* getYearInfo( int year )
+{
+  static CYearInfo result;
+  if ( year < 4342 || year > 9999 ) {
+    result.year = -1;
+    return (&result);
+  }
+
+  int gYear1 = year - YEAR_INTERVAL;
+  result.year = year;
+
+  vdouble vterms, vmoons, vmonth;
+  double lastnew, lastmon, nextnew;
+  double lmon = lunaryear(gYear1, vterms, lastnew, lastmon, vmoons, vmonth, nextnew);
+
+  if ( lmon > 0.0 ) {
+    result.leap = true;
+    result.leapmonth = lmon;
+  } else {
+    result.leap = false;
+    result.leapmonth = 0.0;
+  }
+
+  bool sign = false;
+  for ( uint i = 0; i < vmoons.size(); ++i ) {
+    if ( !sign && vmonth[i] > 10. ) {
+      continue;
+    } else {
+      sign = true;
+    }
+
+    CMonthInfo mi;
+    mi.month = vmonth[i];
+    mi.beginday = vmoons[i];
+
+    result.monthinfos.push_back(mi);
+  }
+
+  int idx = result.monthinfos.size();
+
+  if ( lastmon == 12.0 ) {
+    result.monthinfos[idx-1].endday = nextnew - 1;
+  } else {
+    int gYear2 = gYear1 + 1;
+    vdouble vterms2, vmoons2, vmonth2;
+    double lastnew2, lastmon2, nextnew2;
+    lmon = lunaryear(gYear2, vterms2, lastnew2, lastmon2, vmoons2, vmonth2, nextnew2);
+
+    CMonthInfo mi;
+    mi.month = vmonth[0];
+    mi.beginday = vmoons[0];
+    mi.endday = vmoons[1] - 1;
+
+    result.monthinfos.push_back(mi);
+  }
+
+  idx = result.monthinfos.size();
+  for ( int i = 0; i < idx - 1; ++i ) {
+    result.monthinfos[i].endday = result.monthinfos[i+1].beginday - 1;
+    result.monthinfos[i].total = result.monthinfos[i].endday - result.monthinfos[i].beginday + 1;
+  }
+
+  result.monthinfos[idx-1].total = result.monthinfos[idx-1].endday - result.monthinfos[idx-1].beginday + 1;
+
+  result.beginday = result.monthinfos[0].beginday;
+  result.endday = result.monthinfos[idx-1].endday;
+  result.total = result.endday - result.beginday + 1;
+
+  return (&result);
+}
+
+static bool gregorianToChinese( const QDate &date, int &year, int &month, int &day, double &rmonth )
+{
+  year = -1;
+  month = -1;
+  day = -1;
+  rmonth = 0.0;
+
+  year = date.year() + YEAR_INTERVAL;
+
+  class CYearInfo *ci = getYearInfo( year );
+
+  if ( ci->year == -1 ) {
+    year = -1;
+    return false;
+  }
+
+  int jday = date.toJulianDay();
+  if ( jday < ci->beginday ) {
+    year = year - 1;
+    ci = getYearInfo( year );
+
+    if ( ci->year == -1 ) {
+      year = -1;
+      return false;
+    }
+  }
+
+  for ( uint i = 0; i < ci->monthinfos.size(); ++i ) {
+    if ( jday >= ci->monthinfos[i].beginday || jday <= ci->monthinfos[i].endday ) {
+      month = i + 1;
+      day = jday - ci->monthinfos[i].beginday + 1;
+      rmonth = ci->monthinfos[i].month;
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool chineseToGregorian( QDate & date, int y, int m, int day, double rm = 0.0 )
+{
+  date = QDate();
+
+  class CYearInfo *ci = getYearInfo( y );
+
+  if ( ci->year == -1 )
+    return false;
+
+  int n = ci->monthinfos.size();
+
+  int mon;
+  if ( rm < 1.0 ) {
+    mon = m;
+  } else {
+    int mon = floor(rm);
+    if ( ci->leap ) {
+      if ( ci->leapmonth <= rm )
+        mon = mon + 1;
+    }
+  }
+
+  if ( mon < 1 || mon > n )
+    return false;
+
+  int total = ci->monthinfos[mon-1].total;
+
+  if ( day < 1 || day > total )
+    return false;
+
+  int jday = ci->monthinfos[mon-1].beginday + day - 1;
+
+  date = QDate::fromJulianDay( jday );
+  return true;
+}
+
 KCalendarSystemChinese::KCalendarSystemChinese( const KLocale * locale )
-        : KCalendarSystem( locale ), d( new KCalendarSystemChinesePrivate )
+        : KCalendarSystem( locale ), d( 0 )
 {
 }
 
-// Ok
 KCalendarSystemChinese::~KCalendarSystemChinese()
 {
-    delete d;
 }
 
 QString KCalendarSystemChinese::calendarType() const
@@ -2483,24 +2654,22 @@ QString KCalendarSystemChinese::calendarType() const
     return QLatin1String( "chinese" );
 }
 
-/*
 QDate KCalendarSystemChinese::epoch() const
 {
-    return QDate::fromJulianDay( 347998 );
+    return QDate( 1645, 1, 28);
 }
-*/
 
 QDate KCalendarSystemChinese::earliestValidDate() const
 {
-    // The limitation is from ccal
-    return QDate( 1645, 1, 1);
+    // The limitation is from ccal which is 1645-01-28/4342-01-01
+    return QDate( 1645, 1, 28);
 }
 
 QDate KCalendarSystemChinese::latestValidDate() const
 {
     // Set to last day of year 9999 until confirm date formats & widets support > 9999
     // Last day of Chinese year 9999 is 9999-12-30
-    // Which in Gregorian is 6239-09-25
+    // Which in Gregorian is 7303-02-05
     // Which is jd xxxx FIXME Find out jd and use that instead
     // Can't call setDate( 9999, 12, 29 ) as it creates circular reference!
     return QDate( 7303, 2, 5 );
@@ -2508,17 +2677,8 @@ QDate KCalendarSystemChinese::latestValidDate() const
 
 bool KCalendarSystemChinese::isValid( int y, int month, int day ) const
 {
-    // taken from setYMD below, adapted to use new methods
-    if ( y < year( earliestValidDate() ) || y > year( latestValidDate() ) ) {
-        return false;
-    }
-    if ( month < 1 || month > ( isLeapYear( y ) ? 13 : 12 ) ) {
-        return false;
-    }
-    if ( day < 1 || day > d->hndays( month, y ) ) {
-        return false;
-    }
-    return true;
+  QDate date;
+  return chineseToGregorian( date, y, month, day );
 }
 
 bool KCalendarSystemChinese::isValid( const QDate &date ) const
@@ -2531,142 +2691,198 @@ bool KCalendarSystemChinese::setDate( QDate &date, int year, int month, int day 
     return KCalendarSystem::setDate( date, year, month, day );
 }
 
-// Deprecated
 bool KCalendarSystemChinese::setYMD( QDate & date, int y, int m, int day ) const
 {
-    // range checks
-    // Removed deleted minValidYear and maxValidYear methods
-    // Still use minimum of 1753 for now due to QDate using Julian calendar before then
-    // Later change to following once new methods validated
-    // if ( y < year( earliestValidDate() ) || y > year( latestValidDate() ) )
-    if ( y < year( QDate( 1753, 1, 1 ) ) || y > 9999 ) {
-        return false;
-    }
-
-    if( m < 1 || m > ( is_leap_year( y ) ? 13 : 12 ) ) {
-        return false;
-    }
-
-    if( day < 1 || day > d->hndays( m, y ) ) {
-        return false;
-    }
-
-    class h_date * gd = hebrewToGregorian( y, m, day );
-
-    return date.setYMD( gd->hd_year, gd->hd_mon + 1, gd->hd_day + 1 );
+  return chineseToGregorian( date, y, m, day );
 }
 
 int KCalendarSystemChinese::year( const QDate &date ) const
 {
-    class h_date * sd = toHebrew( date );
-    return sd->hd_year;
+  int year, month, day;
+  double rmonth;
+
+  if ( gregorianToChinese( date, year, month, day, rmonth ) )
+    return year;
+
+  return -1;
 }
 
 int KCalendarSystemChinese::month( const QDate &date ) const
 {
-    class h_date * sd = toHebrew( date );
+  int year, month, day;
+  double rmonth;
 
-    int month = sd->hd_mon;
-    if ( is_leap_year( sd->hd_year ) ) {
-        if( month == 13 /*AdarI*/ ) {
-            month = 6;
-        } else if( month == 14 /*AdarII*/ ) {
-            month = 7;
-        } else if ( month > 6 && month < 13 ) {
-            ++month;
-        }
-    }
-
+  if ( gregorianToChinese( date, year, month, day, rmonth ) )
     return month;
+
+  return -1;
 }
 
 int KCalendarSystemChinese::day( const QDate &date ) const
 {
-    class h_date * sd = toHebrew( date );
+  int year, month, day;
+  double rmonth;
 
-    return sd->hd_day;
+  if ( gregorianToChinese( date, year, month, day, rmonth ) )
+    return day;
+
+  return -1;
 }
 
 QDate KCalendarSystemChinese::addYears( const QDate &date, int nyears ) const
 {
-    QDate result = date;
-    int y = year( date ) + nyears;
+  QDate result;
 
-    setYMD( result, y, month( date ), day( date ) );
+  int year, month, day;
+  double rmonth;
 
-    return result;
+  if ( !(gregorianToChinese( date, year, month, day, rmonth )) ) {
+    return QDate();
+  }
+
+  if ( !(chineseToGregorian( result, year+nyears, month, day, rmonth )) ) {
+    return QDate();
+  }
+
+  return result;
 }
 
 QDate KCalendarSystemChinese::addMonths( const QDate &date, int nmonths ) const
 {
-    QDate result = date;
+  QDate result = date;
 
-    while ( nmonths > 0 ) {
-        result = addDays( result, daysInMonth( result ) );
-        --nmonths;
-    }
+  while ( nmonths > 0 ) {
+    result = addDays( result, daysInMonth( result ) );
+    --nmonths;
+  }
 
-    while ( nmonths < 0 ) {
-        // get the number of days in the previous month to be consistent with
-        // addMonths where nmonths > 0
-        int nDaysInMonth = daysInMonth( addDays( result, -day( result ) ) );
-        result = addDays( result, -nDaysInMonth );
-        ++nmonths;
-    }
+  while ( nmonths < 0 ) {
+    // get the number of days in the previous month to be consistent with
+    // addMonths where nmonths > 0
+    int nDaysInMonth = daysInMonth( addDays( result, -day( result ) ) );
+    result = addDays( result, -nDaysInMonth );
+    ++nmonths;
+  }
 
-    return result;
+  return result;
 }
 
 QDate KCalendarSystemChinese::addDays( const QDate &date, int ndays ) const
 {
-    return date.addDays( ndays );
+  return date.addDays( ndays );
 }
 
 int KCalendarSystemChinese::monthsInYear( const QDate &date ) const
 {
-    if ( is_leap_year( year( date ) ) ) {
-        return 13;
-    } else {
-        return 12;
-    }
+  int year, month, day;
+  double rmonth;
+
+  if ( !(gregorianToChinese( date, year, month, day, rmonth )) ) {
+    return -1;
+  }
+
+  if ( isLeapYear( year ) ) {
+    return 13;
+  } else {
+    return 12;
+  }
 }
 
 int KCalendarSystemChinese::weeksInYear( const QDate &date ) const
 {
-    return KCalendarSystem::weeksInYear( date );
+  return KCalendarSystem::weeksInYear( date );
 }
 
-// Ok
 int KCalendarSystemChinese::weeksInYear( int year ) const
 {
-    QDate temp;
-    setYMD( temp, year, 1, 1 );  // don't pass an uninitialized QDate to
-    // monthsInYear in the next call
-    setYMD( temp, year, monthsInYear( temp ), d->hndays( monthsInYear( temp ), year ) );
+  class CYearInfo *ci = getYearInfo( year );
 
-    int nWeekNumber = weekNumber( temp );
-    // last week belongs to next year
-    if( nWeekNumber == 1 ) {
-        temp = temp.addDays( -7 );
-        nWeekNumber = weekNumber( temp );
-    }
+  if ( ci->year == -1 ) {
+    year = -1;
+    return -1;
+  }
 
-    return nWeekNumber;
+  // Makes assumption that Julian Day 0 was day 1 of week
+  // This is true for Julian/Gregorian calendar with jd 0 being Monday
+  // We add 1 for ISO compliant numbering for 7 day week
+  // Assumes we've never skipped weekdays
+  int daysinweek = daysInWeek( QDate() );
+
+  int first = ( ci->beginday % daysinweek ) + 1;
+  int last = ( ci->endday % daysinweek ) + 1;
+
+  int firstweekday;
+  int lastweekday;
+
+  if ( first > 4 ) {
+    firstweekday = ci->beginday - first + 8;
+  } else {
+    firstweekday = ci->beginday - first + 1;
+  }
+
+  if ( last < 4 ) {
+    lastweekday = ci->endday - last;
+  } else {
+    lastweekday = ci->endday - last + 7;
+  }
+
+  return ( (lastweekday + 1 - firstweekday) / daysinweek );
 }
 
 int KCalendarSystemChinese::daysInYear( const QDate &date ) const
 {
-    QDate first, last;
+  int year = date.year() + YEAR_INTERVAL;
 
-    setYMD( first, year( date ), 1, 1 ); // 1 Tishrey
-    setYMD( last, year( date ) + 1, 1, 1 ); // 1 Tishrey the year later
+  class CYearInfo *ci = getYearInfo( year );
 
-    return first.daysTo( last );
+  if ( ci->year == -1 ) {
+    year = -1;
+    return -1;
+  }
+
+  int jday = date.toJulianDay();
+  if ( jday < ci->beginday ) {
+    year = year - 1;
+    ci = getYearInfo( year );
+
+    if ( ci->year == -1 ) {
+      year = -1;
+      return -1;
+    }
+  }
+
+  return ci->total;
 }
 
 int KCalendarSystemChinese::daysInMonth( const QDate &date ) const
 {
-    return d->hndays( month( date ), year( date ) );
+  int year = date.year() + YEAR_INTERVAL;
+
+  class CYearInfo *ci = getYearInfo( year );
+
+  if ( ci->year == -1 ) {
+    year = -1;
+    return -1;
+  }
+
+  int jday = date.toJulianDay();
+  if ( jday < ci->beginday ) {
+    year = year - 1;
+    ci = getYearInfo( year );
+
+    if ( ci->year == -1 ) {
+      year = -1;
+      return -1;
+    }
+  }
+
+  for ( uint i = 0; i < ci->monthinfos.size(); ++i ) {
+    if ( jday >= ci->monthinfos[i].beginday && jday <= ci->monthinfos[i].endday ) {
+      return ci->monthinfos[i].total;
+    }
+  }
+
+  return -1;
 }
 
 int KCalendarSystemChinese::daysInWeek( const QDate &date ) const
@@ -2676,229 +2892,424 @@ int KCalendarSystemChinese::daysInWeek( const QDate &date ) const
 
 int KCalendarSystemChinese::dayOfYear( const QDate &date ) const
 {
-    QDate first;
+  int year = date.year() + YEAR_INTERVAL;
 
-    setYMD( first, year( date ), 1, 1 );
+  class CYearInfo *ci = getYearInfo( year );
 
-    return first.daysTo( date ) + 1;
+  if ( ci->year == -1 ) {
+    year = -1;
+    return -1;
+  }
+
+  int jday = date.toJulianDay();
+  if ( jday < ci->beginday ) {
+    year = year - 1;
+    ci = getYearInfo( year );
+
+    if ( ci->year == -1 ) {
+      year = -1;
+      return -1;
+    }
+  }
+
+  return (jday - ci->beginday + 1);
 }
 
 int KCalendarSystemChinese::dayOfWeek( const QDate &date ) const
 {
-    class h_date * sd = toHebrew( date );
-    if ( sd->hd_dw == 0 ) {
-        return 7;
-    } else {
-        return ( sd->hd_dw );
-    }
+  return KCalendarSystem::dayOfWeek( date );
 }
 
 int KCalendarSystemChinese::weekNumber( const QDate &date, int *yearNum ) const
 {
-    QDate firstDayWeek1, lastDayOfYear;
-    int y = year( date );
-    int week;
-    int weekDay1, dayOfWeek1InYear;
+  int y = year( date );
 
-    // let's guess 1st day of 1st week
-    setYMD( firstDayWeek1, y, 1, 1 );
-    weekDay1 = dayOfWeek( firstDayWeek1 );
+  class CYearInfo *ci = getYearInfo( y );
 
-    // iso 8601: week 1  is the first containing thursday and week starts on
-    // monday
-    if ( weekDay1 > 4 /*Thursday*/ ) {
-        firstDayWeek1 = addDays( firstDayWeek1 , 7 - weekDay1 + 1 ); // next monday
-    }
+  if ( ci->year == -1 ) {
+    if ( yearNum )
+      *yearNum = -1;
+    return -1;
+  }
 
-    dayOfWeek1InYear = dayOfYear( firstDayWeek1 );
+  // Makes assumption that Julian Day 0 was day 1 of week
+  // This is true for Julian/Gregorian calendar with jd 0 being Monday
+  // We add 1 for ISO compliant numbering for 7 day week
+  // Assumes we've never skipped weekdays
+  int daysinweek = daysInWeek( date );
 
-    // if our date in prev year's week
-    if ( dayOfYear( date ) < dayOfWeek1InYear ) {
-        if ( yearNum )
-            * yearNum = y - 1;
-        return weeksInYear( y - 1 );
-    }
+  int first = ( ci->beginday % daysinweek ) + 1;
+  int last = ( ci->endday % daysinweek ) + 1;
 
-    // let's check if its last week belongs to next year
-    setYMD( lastDayOfYear, y + 1, 1, 1 );
-    lastDayOfYear = addDays( lastDayOfYear, -1 );
-    // if our date is in last week && 1st week in next year has thursday
-    if ( ( dayOfYear( date ) >= daysInYear( date ) - dayOfWeek( lastDayOfYear ) + 1 )
-            && dayOfWeek( lastDayOfYear ) < 4 ) {
-        if ( yearNum ) {
-            * yearNum = y + 1;
-        }
-        week = 1;
-    } else {
-        // To calculate properly the number of weeks from day a to x let's make a day 1 of week
-        if( weekDay1 < 5 ) {
-            firstDayWeek1 = addDays( firstDayWeek1, -( weekDay1 - 1 ) );
-        }
+  int firstweekday;
+  int lastweekday;
 
-        week = firstDayWeek1.daysTo( date ) / 7 + 1;
-    }
+  if ( first > 4 ) {
+    firstweekday = ci->beginday - first + 8;
+  } else {
+    firstweekday = ci->beginday - first + 1;
+  }
 
-    return week;
+  if ( last < 4 ) {
+    lastweekday = ci->endday - last;
+  } else {
+    lastweekday = ci->endday - last + 7;
+  }
+
+  int jday = date.toJulianDay();
+
+  if ( jday < firstweekday ) {
+    if ( yearNum )
+      * yearNum = y - 1;
+    return weeksInYear( y - 1 );
+  } else if ( jday > lastweekday ) {
+    if ( yearNum )
+      * yearNum = y + 1;
+    return 1;
+  } else { // firstweekday <= jday <= lastweekday
+    if ( yearNum )
+      * yearNum = y;
+    return ((jday - firstweekday)/daysinweek) + 1;
+  }
+
+  return -1;
 }
 
 bool KCalendarSystemChinese::isLeapYear( int year ) const
 {
-    // from is_leap_year above
-    return ( ( ( ( 7 * year ) + 1 ) % 19 ) < 7 );
+  class CYearInfo *ci = getYearInfo( year );
+
+  if ( ci->year == -1 )
+    return false;
+
+  return ci->leap;
 }
 
 bool KCalendarSystemChinese::isLeapYear( const QDate &date ) const
 {
-    return QDate::isLeapYear( year( date ) );
+  return QDate::isLeapYear( year( date ) );
 }
 
-// ### Fixme
-// JPL Fix what?
-// Ask translators for short fomats of month names!
 QString KCalendarSystemChinese::monthName( int month, int year, MonthNameFormat format ) const
 {
-    if ( month < 1 ) {
-        return QString();
-    }
+  class CYearInfo *ci = getYearInfo( year );
 
-    if ( is_leap_year( year ) && month > 13 ) {
-        return QString();
-    } else if ( month > 12 ) {
-        return QString();
-    }
+  if ( month < 1 ) {
+    return QString();
+  }
 
-    // We must map conversion algorithm month index to real index
-    if( month == 6 && is_leap_year( year ) ) {
-        month = 13; /*Adar I*/
-    } else if ( month == 7 && is_leap_year( year ) ) {
-        month = 14; /*Adar II*/
-    } else if ( month > 7 && is_leap_year( year ) ) {
-        month--; //Because of Adar II
-    }
+  if ( (uint)month > ci->monthinfos.size() ) {
+    return QString();
+  }
 
-    if ( format == ShortNamePossessive || format == LongNamePossessive ) {
-        switch( month ) {
+  bool sign;
+  int mon;
+  if ( !ci->leap ) {
+    sign = false;
+    mon = month;
+  } else {
+    int lm = floor( ci->leapmonth );
+    if ( month <= lm ) {
+      sign = false;
+      mon = month;
+    } else if ( month == lm + 1 ) {
+      sign = true;
+      mon = month - 1;
+    } else {
+      sign = false;
+      mon = month - 1;
+    }
+  }
+
+  if ( !sign ) {
+    if ( format == ShortNamePossessive ) {
+        switch ( month ) {
         case 1:
-            return ki18n( "of Tishrey" ).toString( locale() );
+            return ki18nc( "of January",   "of Jan" ).toString( locale() );
         case 2:
-            return ki18n( "of Heshvan" ).toString( locale() );
+            return ki18nc( "of February",  "of Feb" ).toString( locale() );
         case 3:
-            return ki18n( "of Kislev" ).toString( locale() );
+            return ki18nc( "of March",     "of Mar" ).toString( locale() );
         case 4:
-            return ki18n( "of Tevet" ).toString( locale() );
+            return ki18nc( "of April",     "of Apr" ).toString( locale() );
         case 5:
-            return ki18n( "of Shvat" ).toString( locale() );
+            return ki18nc( "of May short", "of May" ).toString( locale() );
         case 6:
-            return ki18n( "of Adar" ).toString( locale() );
+            return ki18nc( "of June",      "of Jun" ).toString( locale() );
         case 7:
-            return ki18n( "of Nisan" ).toString( locale() );
+            return ki18nc( "of July",      "of Jul" ).toString( locale() );
         case 8:
-            return ki18n( "of Iyar" ).toString( locale() );
+            return ki18nc( "of August",    "of Aug" ).toString( locale() );
         case 9:
-            return ki18n( "of Sivan" ).toString( locale() );
+            return ki18nc( "of September", "of Sep" ).toString( locale() );
         case 10:
-            return ki18n( "of Tamuz" ).toString( locale() );
+            return ki18nc( "of October",   "of Oct" ).toString( locale() );
         case 11:
-            return ki18n( "of Av" ).toString( locale() );
+            return ki18nc( "of November",  "of Nov" ).toString( locale() );
         case 12:
-            return ki18n( "of Elul" ).toString( locale() );
-        case 13:
-            return ki18n( "of Adar I" ).toString( locale() );
-        case 14:
-            return ki18n( "of Adar II" ).toString( locale() );
+            return ki18nc( "of December",  "of Dec" ).toString( locale() );
         default:
             return QString();
         }
     }
 
-    switch( month ) {
+    if ( format == LongNamePossessive ) {
+        switch ( month ) {
+        case 1:
+            return ki18n( "of January" ).toString( locale() );
+        case 2:
+            return ki18n( "of February" ).toString( locale() );
+        case 3:
+            return ki18n( "of March" ).toString( locale() );
+        case 4:
+            return ki18n( "of April" ).toString( locale() );
+        case 5:
+            return ki18nc( "of May long", "of May" ).toString( locale() );
+        case 6:
+            return ki18n( "of June" ).toString( locale() );
+        case 7:
+            return ki18n( "of July" ).toString( locale() );
+        case 8:
+            return ki18n( "of August" ).toString( locale() );
+        case 9:
+            return ki18n( "of September" ).toString( locale() );
+        case 10:
+            return ki18n( "of October" ).toString( locale() );
+        case 11:
+            return ki18n( "of November" ).toString( locale() );
+        case 12:
+            return ki18n( "of December" ).toString( locale() );
+        default:
+            return QString();
+        }
+    }
+
+    if ( format == ShortName ) {
+        switch ( month ) {
+        case 1:
+            return ki18nc( "January", "Jan" ).toString( locale() );
+        case 2:
+            return ki18nc( "February", "Feb" ).toString( locale() );
+        case 3:
+            return ki18nc( "March", "Mar" ).toString( locale() );
+        case 4:
+            return ki18nc( "April", "Apr" ).toString( locale() );
+        case 5:
+            return ki18nc( "May short", "May" ).toString( locale() );
+        case 6:
+            return ki18nc( "June", "Jun" ).toString( locale() );
+        case 7:
+            return ki18nc( "July", "Jul" ).toString( locale() );
+        case 8:
+            return ki18nc( "August", "Aug" ).toString( locale() );
+        case 9:
+            return ki18nc( "September", "Sep" ).toString( locale() );
+        case 10:
+            return ki18nc( "October", "Oct" ).toString( locale() );
+        case 11:
+            return ki18nc( "November", "Nov" ).toString( locale() );
+        case 12:
+            return ki18nc( "December", "Dec" ).toString( locale() );
+        default:
+            return QString();
+        }
+    }
+
+    // Default to LongName
+    switch ( month ) {
     case 1:
-        return ki18n( "Tishrey" ).toString( locale() );
+        return ki18n( "January" ).toString( locale() );
     case 2:
-        return ki18n( "Heshvan" ).toString( locale() );
+        return ki18n( "February" ).toString( locale() );
     case 3:
-        return ki18n( "Kislev" ).toString( locale() );
+        return ki18nc( "March long", "March" ).toString( locale() );
     case 4:
-        return ki18n( "Tevet" ).toString( locale() );
+        return ki18n( "April" ).toString( locale() );
     case 5:
-        return ki18n( "Shvat" ).toString( locale() );
+        return ki18nc( "May long", "May" ).toString( locale() );
     case 6:
-        return ki18n( "Adar" ).toString( locale() );
+        return ki18n( "June" ).toString( locale() );
     case 7:
-        return ki18n( "Nisan" ).toString( locale() );
+        return ki18n( "July" ).toString( locale() );
     case 8:
-        return ki18n( "Iyar" ).toString( locale() );
+        return ki18nc( "August long", "August" ).toString( locale() );
     case 9:
-        return ki18n( "Sivan" ).toString( locale() );
+        return ki18n( "September" ).toString( locale() );
     case 10:
-        return ki18n( "Tamuz" ).toString( locale() );
+        return ki18n( "October" ).toString( locale() );
     case 11:
-        return ki18n( "Av" ).toString( locale() );
+        return ki18n( "November" ).toString( locale() );
     case 12:
-        return ki18n( "Elul" ).toString( locale() );
-    case 13:
-        return ki18n( "Adar I" ).toString( locale() );
-    case 14:
-        return ki18n( "Adar II" ).toString( locale() );
+        return ki18n( "December" ).toString( locale() );
     default:
         return QString();
     }
+  } else {
+    if ( format == ShortNamePossessive ) {
+        switch ( month ) {
+        case 1:
+            return ki18nc( "of Leap January",   "of Leap Jan" ).toString( locale() );
+        case 2:
+            return ki18nc( "of Leap February",  "of Leap Feb" ).toString( locale() );
+        case 3:
+            return ki18nc( "of Leap March",     "of Leap Mar" ).toString( locale() );
+        case 4:
+            return ki18nc( "of Leap April",     "of Leap Apr" ).toString( locale() );
+        case 5:
+            return ki18nc( "of Leap May short", "of Leap May" ).toString( locale() );
+        case 6:
+            return ki18nc( "of Leap June",      "of Leap Jun" ).toString( locale() );
+        case 7:
+            return ki18nc( "of Leap July",      "of Leap Jul" ).toString( locale() );
+        case 8:
+            return ki18nc( "of Leap August",    "of Leap Aug" ).toString( locale() );
+        case 9:
+            return ki18nc( "of Leap September", "of Leap Sep" ).toString( locale() );
+        case 10:
+            return ki18nc( "of Leap October",   "of Leap Oct" ).toString( locale() );
+        case 11:
+            return ki18nc( "of Leap November",  "of Leap Nov" ).toString( locale() );
+        case 12:
+            return ki18nc( "of Leap December",  "of Leap Dec" ).toString( locale() );
+        default:
+            return QString();
+        }
+    }
+
+    if ( format == LongNamePossessive ) {
+        switch ( month ) {
+        case 1:
+            return ki18n( "of Leap January" ).toString( locale() );
+        case 2:
+            return ki18n( "of Leap February" ).toString( locale() );
+        case 3:
+            return ki18n( "of Leap March" ).toString( locale() );
+        case 4:
+            return ki18n( "of Leap April" ).toString( locale() );
+        case 5:
+            return ki18nc( "of Leap May long", "of Leap May" ).toString( locale() );
+        case 6:
+            return ki18n( "of Leap June" ).toString( locale() );
+        case 7:
+            return ki18n( "of Leap July" ).toString( locale() );
+        case 8:
+            return ki18n( "of Leap August" ).toString( locale() );
+        case 9:
+            return ki18n( "of Leap September" ).toString( locale() );
+        case 10:
+            return ki18n( "of Leap October" ).toString( locale() );
+        case 11:
+            return ki18n( "of Leap November" ).toString( locale() );
+        case 12:
+            return ki18n( "of Leap December" ).toString( locale() );
+        default:
+            return QString();
+        }
+    }
+
+    if ( format == ShortName ) {
+        switch ( month ) {
+        case 1:
+            return ki18nc( "Leap January", "Leap Jan" ).toString( locale() );
+        case 2:
+            return ki18nc( "Leap February", "Leap Feb" ).toString( locale() );
+        case 3:
+            return ki18nc( "Leap March", "Leap Mar" ).toString( locale() );
+        case 4:
+            return ki18nc( "Leap April", "Leap Apr" ).toString( locale() );
+        case 5:
+            return ki18nc( "Leap May short", "Leap May" ).toString( locale() );
+        case 6:
+            return ki18nc( "Leap June", "Leap Jun" ).toString( locale() );
+        case 7:
+            return ki18nc( "Leap July", "Leap Jul" ).toString( locale() );
+        case 8:
+            return ki18nc( "Leap August", "Leap Aug" ).toString( locale() );
+        case 9:
+            return ki18nc( "Leap September", "Leap Sep" ).toString( locale() );
+        case 10:
+            return ki18nc( "Leap October", "Leap Oct" ).toString( locale() );
+        case 11:
+            return ki18nc( "Leap November", "Leap Nov" ).toString( locale() );
+        case 12:
+            return ki18nc( "Leap December", "Leap Dec" ).toString( locale() );
+        default:
+            return QString();
+        }
+    }
+
+    // Default to LongName
+    switch ( month ) {
+    case 1:
+        return ki18n( "Leap January" ).toString( locale() );
+    case 2:
+        return ki18n( "Leap February" ).toString( locale() );
+    case 3:
+        return ki18nc( "Leap March long", "Leap March" ).toString( locale() );
+    case 4:
+        return ki18n( "Leap April" ).toString( locale() );
+    case 5:
+        return ki18nc( "Leap May long", "Leap May" ).toString( locale() );
+    case 6:
+        return ki18n( "Leap June" ).toString( locale() );
+    case 7:
+        return ki18n( "Leap July" ).toString( locale() );
+    case 8:
+        return ki18nc( "Leap August long", "Leap August" ).toString( locale() );
+    case 9:
+        return ki18n( "Leap September" ).toString( locale() );
+    case 10:
+        return ki18n( "Leap October" ).toString( locale() );
+    case 11:
+        return ki18n( "Leap November" ).toString( locale() );
+    case 12:
+        return ki18n( "Leap December" ).toString( locale() );
+    default:
+        return QString();
+    }
+  }
 }
 
 QString KCalendarSystemChinese::monthName( const QDate& date, MonthNameFormat format ) const
 {
-    return monthName( month( date ), year( date ), format );
+  return monthName( month( date ), year( date ), format );
 }
 
 QString KCalendarSystemChinese::weekDayName( int weekDay, WeekDayNameFormat format ) const
 {
-    // Use Western day names for now as that's what the old version did,
-    // but wouldn't it be better to use the right Hebrew names like Shabbat?
-    // Could make it switchable by adding new enums to WeekDayFormat, e.g. ShortNameWestern?
     if ( format == ShortDayName ) {
         switch ( weekDay ) {
-        case 1:  return ki18nc( "XingQiYI", "YI" ).toString( locale() );
-        case 2:  return ki18nc( "XingQiER", "ER" ).toString( locale() );
-        case 3:  return ki18nc( "XingQiSAN", "SAN" ).toString( locale() );
-        case 4:  return ki18nc( "XingQiSI", "SI" ).toString( locale() );
-        case 5:  return ki18nc( "XingQiWU", "WU" ).toString( locale() );
-        case 6:  return ki18nc( "XingQiLIU", "LIU" ).toString( locale() );
-        case 7:  return ki18nc( "XingQiRI", "RI" ).toString( locale() );
+        case 1:  return ki18nc( "Monday",    "Mon" ).toString( locale() );
+        case 2:  return ki18nc( "Tuesday",   "Tue" ).toString( locale() );
+        case 3:  return ki18nc( "Wednesday", "Wed" ).toString( locale() );
+        case 4:  return ki18nc( "Thursday",  "Thu" ).toString( locale() );
+        case 5:  return ki18nc( "Friday",    "Fri" ).toString( locale() );
+        case 6:  return ki18nc( "Saturday",  "Sat" ).toString( locale() );
+        case 7:  return ki18nc( "Sunday",    "Sun" ).toString( locale() );
         default: return QString();
         }
     }
 
     switch ( weekDay ) {
-    case 1:  return ki18n( "XingQiYI" ).toString( locale() );
-    case 2:  return ki18n( "XingQiER" ).toString( locale() );
-    case 3:  return ki18n( "XingQiSAN" ).toString( locale() );
-    case 4:  return ki18n( "XingQiSI" ).toString( locale() );
-    case 5:  return ki18n( "XingQiWU" ).toString( locale() );
-    case 6:  return ki18n( "XingQiLIU" ).toString( locale() );
-    case 7:  return ki18n( "XingQiRI" ).toString( locale() );
+    case 1:  return ki18n( "Monday" ).toString( locale() );
+    case 2:  return ki18n( "Tuesday" ).toString( locale() );
+    case 3:  return ki18n( "Wednesday" ).toString( locale() );
+    case 4:  return ki18n( "Thursday" ).toString( locale() );
+    case 5:  return ki18n( "Friday" ).toString( locale() );
+    case 6:  return ki18n( "Saturday" ).toString( locale() );
+    case 7:  return ki18n( "Sunday" ).toString( locale() );
     default: return QString();
     }
 }
 
 QString KCalendarSystemChinese::weekDayName( const QDate &date, WeekDayNameFormat format ) const
 {
-    return weekDayName( dayOfWeek( date ), format );
+  return weekDayName( dayOfWeek( date ), format );
 }
 
 QString KCalendarSystemChinese::yearString( const QDate &pDate, StringFormat format ) const
 {
-    QString sResult;
-
-    // Only use hebrew numbers if the hebrew setting is selected
-    if ( locale()->language() == QLatin1String( "he" ) ) {
-        if ( format == ShortFormat ) {
-            sResult = num2heb( year( pDate ), false );
-        }
-    } else {
-        sResult = KCalendarSystem::yearString( pDate, format );
-    }
-
-    return sResult;
+  return KCalendarSystem::yearString( pDate, format );
 }
 
 QString KCalendarSystemChinese::monthString( const QDate &pDate, StringFormat format ) const
@@ -2908,136 +3319,89 @@ QString KCalendarSystemChinese::monthString( const QDate &pDate, StringFormat fo
 
 QString KCalendarSystemChinese::dayString( const QDate &pDate, StringFormat format ) const
 {
-    QString sResult;
-
-    // Only use hebrew numbers if the hebrew setting is selected
-    if ( locale()->language() == QLatin1String( "he" ) ) {
-        sResult = num2heb( day( pDate ), false );
-    } else {
-        sResult = KCalendarSystem::dayString( pDate, format );
-    }
-
-    return sResult;
+  return KCalendarSystem::dayString( pDate, format );
 }
 
 int KCalendarSystemChinese::yearStringToInteger( const QString &sNum, int &iLength ) const
 {
-    int iResult;
-
-    if ( locale()->language() == "he" ) {
-        iResult = heb2num( sNum, iLength );
-    } else {
-        iResult = KCalendarSystem::yearStringToInteger( sNum, iLength );
-    }
-
-    if ( iResult < 1000 ) {
-        iResult += 5000; // assume we're in the 6th millenium (y6k bug)
-    }
-
-    return iResult;
+  return KCalendarSystem::yearStringToInteger( sNum, iLength );
 }
 
 int KCalendarSystemChinese::monthStringToInteger( const QString &sNum, int &iLength ) const
 {
-    return KCalendarSystem::monthStringToInteger( sNum, iLength );
+  return KCalendarSystem::monthStringToInteger( sNum, iLength );
 }
 
 int KCalendarSystemChinese::dayStringToInteger( const QString &sNum, int &iLength ) const
 {
-    int iResult;
-
-    if ( locale()->language() == "he" ) {
-        iResult = heb2num( sNum, iLength );
-    } else {
-        iResult = KCalendarSystem::yearStringToInteger( sNum, iLength );
-    }
-
-    return iResult;
+  return KCalendarSystem::yearStringToInteger( sNum, iLength );
 }
 
 QString KCalendarSystemChinese::formatDate( const QDate &date, KLocale::DateFormat format ) const
 {
-    return KCalendarSystem::formatDate( date, format );
+  return KCalendarSystem::formatDate( date, format );
 }
 
 QDate KCalendarSystemChinese::readDate( const QString &str, bool *ok ) const
 {
-    return KCalendarSystem::readDate( str, ok );
+  return KCalendarSystem::readDate( str, ok );
 }
 
 QDate KCalendarSystemChinese::readDate( const QString &intstr, const QString &fmt, bool *ok ) const
 {
-    return KCalendarSystem::readDate( intstr, fmt, ok );
+  return KCalendarSystem::readDate( intstr, fmt, ok );
 }
 
 QDate KCalendarSystemChinese::readDate( const QString &str, KLocale::ReadDateFlags flags, bool *ok ) const
 {
-    return KCalendarSystem::readDate( str, flags, ok );
+  return KCalendarSystem::readDate( str, flags, ok );
 }
 
 int KCalendarSystemChinese::weekDayOfPray() const
 {
-    return 7; // sunday
+  return 7; // sunday
 }
 
 int KCalendarSystemChinese::weekStartDay() const
 {
-    return KCalendarSystem::weekStartDay();
+  return KCalendarSystem::weekStartDay();
 }
 
 bool KCalendarSystemChinese::isLunar() const
 {
-    return false;
+  return false;
 }
 
 bool KCalendarSystemChinese::isLunisolar() const
 {
-    return true;
+  return true;
 }
 
 bool KCalendarSystemChinese::isSolar() const
 {
-    return false;
+  return false;
 }
 
 bool KCalendarSystemChinese::isProleptic() const
 {
-    return false;
+  return false;
 }
 
 bool KCalendarSystemChinese::julianDayToDate( int jd, int &year, int &month, int &day ) const
 {
-    if ( jd >= earliestValidDate().toJulianDay() && jd <= latestValidDate().toJulianDay() ) {
-        // Hatcher formula I.  Fix me!
-        year = d->yearOfJulianDay( jd );
-        int jdTishri1ThisYear = d->julianDayOfTishri1( year );
-        int dayInYear = jd - jdTishri1ThisYear + 1;
-        int K = d->characterOfYear( year );
-        int n = dayInYear / 30;
-        if ( dayInYear > d->daysPreceedingMonth( K, n + 1 ) ) {
-            month = n + 1;
-        } else {
-            if ( dayInYear > d->daysPreceedingMonth( K, n + 1 ) ) {
-                month = n;
-            } else {
-                month = n - 1;
-            }
-        }
-        day = dayInYear - d->daysPreceedingMonth( K, month );
-        return true;
-    }
-    return false;
+  QDate date = QDate::fromJulianDay( jd );
+  double rmonth;
+  return gregorianToChinese( date, year, month, day, rmonth );
 }
 
 bool KCalendarSystemChinese::dateToJulianDay( int year, int month, int day, int &jd ) const
 {
-    // From Hatcher formula J.  Fix me!
-    if ( isValid( year, month, day ) ) {
-        int jdTishri1ThisYear = d->julianDayOfTishri1( year );
-        jd = jdTishri1ThisYear
-             + d->daysPreceedingMonth( d->characterOfYear( year ), month )
-             + day - 1;
-        return true;
-    }
+  QDate date;
+  if ( !( chineseToGregorian( date, year, month, day ) ) ) {
+    jd = -1;
     return false;
+  }
+
+  jd = date.toJulianDay();
+  return true;
 }

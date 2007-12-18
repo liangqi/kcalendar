@@ -50,7 +50,7 @@ public:
 
     virtual QString calendarType() const;
 
-    //virtual QDate epoch() const;
+    virtual QDate epoch() const;
     virtual QDate earliestValidDate() const;
     virtual QDate latestValidDate() const;
     virtual bool isValid( int year, int month, int day ) const;

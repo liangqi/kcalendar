@@ -1,0 +1,48 @@
+Please use UTF-8 to read this file.
+
+代码主页：
+http://code.google.com/p/kcalendar/
+
+KDE 4.0已经非常临近了，但非常遗憾的是KDE系统中一直没有面向中国以及东亚用户使用的农历。
+
+最近基于ccal的代码，做了一些封装，目前基本可用，但是效率还有待提高。
+
+欢迎大家测试并且提出修改意见。
+
+代码使用方法：
+有关如何构建KDE 4开发环境和KDE 4应用开发，请参考：
+http://techbase.kde.org/Getting_Started/Build/KDE4
+http://techbase.kde.org/Development/Tutorials#Introduction_To_KDE_4_Programming
+
+只需要kdelibs以及之前的步骤，完成后。
+将kde4/kcalendarsystemchinese.h, kde4/kcalendarsystemchinese.cpp, kde4/kcalendarsystem.cpp复制到kde/src/KDE/kdelibs/kdecore/date下。
+
+将kde4/CMakeList.txt复制到kde/src/KDE/kdelibs/kdecore下。
+
+切换到kde/src/KDE/kdelibs下，cmakekde即可编译新的库。
+
+有关测试用例：
+example/test用来测试各API接口。
+example/guitest使用KDatePicker测试，比较慢的说，请大家稍等待一下。
+
+编译方法：
+cd example/test
+cmake .
+make
+
+cd example/guitest
+cmake .
+make
+
+主要问题，addMonths还需要改进，目前的算法太耗时间了，加1000个月时，基本无法忍受（test中）。
+
+讨论方法：
+kde-china邮件列表
+http://mail.kde.org/mailman/listinfo/kde-china
+
+kde-cn irc
+irc://irc.freenode.net/#kde-cn
+
+Liang Qi 齐亮
+cavendish.qi@gmail.com
+2007-12-19

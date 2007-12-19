@@ -2487,9 +2487,11 @@ public:
   int beginday; // julian day
   int endday; // julian day
   int total;
+/*
   int firstweekday;
   int lastweekday;
   int totalweeks;
+*/
   vector<CMonthInfo> monthinfos;
 };
 
@@ -2503,6 +2505,9 @@ static class CYearInfo* getYearInfo( int year )
     return (&result);
   }
 
+  if ( year == result.year )
+    return (&result);
+
   int gYear1 = year - YEAR_INTERVAL;
   result.year = year;
 
@@ -2512,11 +2517,11 @@ static class CYearInfo* getYearInfo( int year )
 
   if ( lmon > 0.0 ) {
     result.leap = true;
-    result.leapmonth = lmon;
   } else {
     result.leap = false;
-    result.leapmonth = 0.0;
   }
+
+  result.monthinfos.clear();
 
   bool sign = false;
   for ( uint i = 0; i < vmoons.size(); ++i ) {
@@ -2535,7 +2540,7 @@ static class CYearInfo* getYearInfo( int year )
 
   int idx = result.monthinfos.size();
 
-  if ( lastmon == 12.0 ) {
+  if ( result.monthinfos[idx-1].month == 12.0 ) {
     result.monthinfos[idx-1].endday = nextnew - 1;
   } else {
     int gYear2 = gYear1 + 1;
@@ -2544,9 +2549,9 @@ static class CYearInfo* getYearInfo( int year )
     lmon = lunaryear(gYear2, vterms2, lastnew2, lastmon2, vmoons2, vmonth2, nextnew2);
 
     CMonthInfo mi;
-    mi.month = vmonth[0];
-    mi.beginday = vmoons[0];
-    mi.endday = vmoons[1] - 1;
+    mi.month = vmonth2[0];
+    mi.beginday = vmoons2[0];
+    mi.endday = vmoons2[1] - 1;
 
     result.monthinfos.push_back(mi);
   }
@@ -2563,11 +2568,25 @@ static class CYearInfo* getYearInfo( int year )
   result.endday = result.monthinfos[idx-1].endday;
   result.total = result.endday - result.beginday + 1;
 
+  if ( result.leap ) {
+    idx = result.monthinfos.size();
+    for ( int i = 0; i < idx; ++i ) {
+      double month = result.monthinfos[i].month;
+      int mon = floor(month);
+      if ( month == mon + 0.5 ) {
+        result.leapmonth = month;
+        break;
+      }
+    }
+  }
+
   return (&result);
 }
 
 static bool gregorianToChinese( const QDate &date, int &year, int &month, int &day, double &rmonth )
 {
+  int jday = date.toJulianDay();
+
   year = -1;
   month = -1;
   day = -1;
@@ -2578,11 +2597,19 @@ static bool gregorianToChinese( const QDate &date, int &year, int &month, int &d
   class CYearInfo *ci = getYearInfo( year );
 
   if ( ci->year == -1 ) {
-    year = -1;
-    return false;
-  }
+    year = year - 1;
+    ci = getYearInfo( year );
 
-  int jday = date.toJulianDay();
+    if ( ci->year == -1 ) {
+      year = -1;
+      return false;
+    }
+
+    if ( jday > ci->endday ) {
+      year = -1;
+      return false;
+    }
+  } else {
   if ( jday < ci->beginday ) {
     year = year - 1;
     ci = getYearInfo( year );
@@ -2592,9 +2619,10 @@ static bool gregorianToChinese( const QDate &date, int &year, int &month, int &d
       return false;
     }
   }
+  }
 
   for ( uint i = 0; i < ci->monthinfos.size(); ++i ) {
-    if ( jday >= ci->monthinfos[i].beginday || jday <= ci->monthinfos[i].endday ) {
+    if ( jday >= ci->monthinfos[i].beginday && jday <= ci->monthinfos[i].endday ) {
       month = i + 1;
       day = jday - ci->monthinfos[i].beginday + 1;
       rmonth = ci->monthinfos[i].month;
@@ -2619,7 +2647,7 @@ static bool chineseToGregorian( QDate & date, int y, int m, int day, double rm =
   if ( rm < 1.0 ) {
     mon = m;
   } else {
-    int mon = floor(rm);
+    mon = floor(rm);
     if ( ci->leap ) {
       if ( ci->leapmonth <= rm )
         mon = mon + 1;
@@ -2688,7 +2716,8 @@ bool KCalendarSystemChinese::isValid( const QDate &date ) const
 
 bool KCalendarSystemChinese::setDate( QDate &date, int year, int month, int day ) const
 {
-    return KCalendarSystem::setDate( date, year, month, day );
+  date = QDate();
+  return KCalendarSystem::setDate( date, year, month, day );
 }
 
 bool KCalendarSystemChinese::setYMD( QDate & date, int y, int m, int day ) const
@@ -2790,7 +2819,7 @@ int KCalendarSystemChinese::monthsInYear( const QDate &date ) const
 
 int KCalendarSystemChinese::weeksInYear( const QDate &date ) const
 {
-  return KCalendarSystem::weeksInYear( date );
+  return KCalendarSystem::weeksInYear( year( date ) );
 }
 
 int KCalendarSystemChinese::weeksInYear( int year ) const
@@ -2987,7 +3016,7 @@ bool KCalendarSystemChinese::isLeapYear( int year ) const
 
 bool KCalendarSystemChinese::isLeapYear( const QDate &date ) const
 {
-  return QDate::isLeapYear( year( date ) );
+  return isLeapYear( year( date ) );
 }
 
 QString KCalendarSystemChinese::monthName( int month, int year, MonthNameFormat format ) const
@@ -3023,7 +3052,7 @@ QString KCalendarSystemChinese::monthName( int month, int year, MonthNameFormat 
 
   if ( !sign ) {
     if ( format == ShortNamePossessive ) {
-        switch ( month ) {
+        switch ( mon ) {
         case 1:
             return ki18nc( "of January",   "of Jan" ).toString( locale() );
         case 2:
@@ -3054,7 +3083,7 @@ QString KCalendarSystemChinese::monthName( int month, int year, MonthNameFormat 
     }
 
     if ( format == LongNamePossessive ) {
-        switch ( month ) {
+        switch ( mon ) {
         case 1:
             return ki18n( "of January" ).toString( locale() );
         case 2:
@@ -3085,7 +3114,7 @@ QString KCalendarSystemChinese::monthName( int month, int year, MonthNameFormat 
     }
 
     if ( format == ShortName ) {
-        switch ( month ) {
+        switch ( mon ) {
         case 1:
             return ki18nc( "January", "Jan" ).toString( locale() );
         case 2:
@@ -3116,7 +3145,7 @@ QString KCalendarSystemChinese::monthName( int month, int year, MonthNameFormat 
     }
 
     // Default to LongName
-    switch ( month ) {
+    switch ( mon ) {
     case 1:
         return ki18n( "January" ).toString( locale() );
     case 2:
@@ -3146,7 +3175,7 @@ QString KCalendarSystemChinese::monthName( int month, int year, MonthNameFormat 
     }
   } else {
     if ( format == ShortNamePossessive ) {
-        switch ( month ) {
+        switch ( mon ) {
         case 1:
             return ki18nc( "of Leap January",   "of Leap Jan" ).toString( locale() );
         case 2:
@@ -3177,7 +3206,7 @@ QString KCalendarSystemChinese::monthName( int month, int year, MonthNameFormat 
     }
 
     if ( format == LongNamePossessive ) {
-        switch ( month ) {
+        switch ( mon ) {
         case 1:
             return ki18n( "of Leap January" ).toString( locale() );
         case 2:
@@ -3208,7 +3237,7 @@ QString KCalendarSystemChinese::monthName( int month, int year, MonthNameFormat 
     }
 
     if ( format == ShortName ) {
-        switch ( month ) {
+        switch ( mon ) {
         case 1:
             return ki18nc( "Leap January", "Leap Jan" ).toString( locale() );
         case 2:
@@ -3239,7 +3268,7 @@ QString KCalendarSystemChinese::monthName( int month, int year, MonthNameFormat 
     }
 
     // Default to LongName
-    switch ( month ) {
+    switch ( mon ) {
     case 1:
         return ki18n( "Leap January" ).toString( locale() );
     case 2:

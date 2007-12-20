@@ -34,7 +34,26 @@ cd example/guitest
 cmake .
 make
 
-主要问题，addMonths还需要改进，目前的算法太耗时间了，加1000个月时，基本无法忍受（test中）。
+主要问题，addMonths正在改进中
+
+加1000个月的时候
+2007-12-19版本中测试信息
+kde-devel@liangqi-suse103:~/tmp/test> time ./test
+Chinese for 2007-12-19:  4704 - 11 - 10
+addMonths: 2007-12-19, 1000:  "Sat Oct 23 2088" :  4785 - 10 - 10
+
+real    0m23.462s
+user    0m23.193s
+sys     0m0.096s
+
+2007-12-20版本中测试信息
+kde-devel@liangqi-suse103:~/tmp/test> time ./test
+Chinese for 2007-12-19:  4704 - 11 - 10
+addMonths: 2007-12-19, 1000:  "Sat Oct 23 2088" :  4785 - 10 - 10
+
+real    0m7.976s
+user    0m7.792s
+sys     0m0.084s
 
 讨论方法：
 kde-china邮件列表
@@ -45,4 +64,4 @@ irc://irc.freenode.net/#kde-cn
 
 Liang Qi 齐亮
 cavendish.qi@gmail.com
-2007-12-19
+2007-12-20

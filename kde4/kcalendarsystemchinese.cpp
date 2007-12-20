@@ -2780,17 +2780,64 @@ QDate KCalendarSystemChinese::addMonths( const QDate &date, int nmonths ) const
 {
   QDate result = date;
 
-  while ( nmonths > 0 ) {
-    result = addDays( result, daysInMonth( result ) );
-    --nmonths;
+  if ( nmonths == 0 )
+    return result;
+
+  int year, month, day;
+  double rmonth;
+
+  if ( !(gregorianToChinese( date, year, month, day, rmonth )) ) {
+    return QDate();
   }
 
-  while ( nmonths < 0 ) {
-    // get the number of days in the previous month to be consistent with
-    // addMonths where nmonths > 0
-    int nDaysInMonth = daysInMonth( addDays( result, -day( result ) ) );
-    result = addDays( result, -nDaysInMonth );
-    ++nmonths;
+  nmonths = month + nmonths;
+  int jday;
+  class CYearInfo *ci;
+
+  if ( nmonths <= 0 ) {
+    while ( nmonths <= 0 ) {
+      year = year - 1;
+
+      ci = getYearInfo( year );
+
+      if ( ci->year == -1 ) {
+        return QDate();
+      }
+
+      int mtotal = ci->monthinfos.size();
+
+      nmonths = nmonths + mtotal;
+
+      if ( nmonths <= 0 ) {
+        continue;
+      } else {
+        jday = ci->monthinfos[nmonths - 1].beginday + day - 1;
+        result = QDate::fromJulianDay( jday );
+        return result;
+      }
+    }
+  }
+
+  if ( nmonths > 0 ) {
+    while ( nmonths > 0 ) {
+      ci = getYearInfo( year );
+
+      if ( ci->year == -1 ) {
+        return QDate();
+      }
+
+      int mtotal = ci->monthinfos.size();
+
+      if ( nmonths <= mtotal ) {
+        jday = ci->monthinfos[nmonths - 1].beginday + day - 1;
+        result = QDate::fromJulianDay( jday );
+        return result;
+      } else {
+        year = year + 1;
+        nmonths = nmonths - mtotal;
+        continue;
+      }
+    }
   }
 
   return result;

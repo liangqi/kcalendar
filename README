@@ -55,6 +55,9 @@ real    0m7.976s
 user    0m7.792s
 sys     0m0.084s
 
+2007-12-20
+最新备注，已经加入1950-2050的缓存，guitest速度已经非常理想了。欢迎大家测试。
+
 讨论方法：
 kde-china邮件列表
 http://mail.kde.org/mailman/listinfo/kde-china

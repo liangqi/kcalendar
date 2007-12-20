@@ -1,5 +1,44 @@
 Please use UTF-8 to read this file.
 
+There is no code for Chinese calendar, which is mostly used by people
+in or from East Asia, China, Korean, Japan and so on.
+
+I just based on the code of ccal and create KCalendarSystemChinese.
+And I read some docs on line:
+http://thunder.cwru.edu/ccal/index.html
+http://thunder.cwru.edu/ccal/rule.htm (in Chinese)
+http://www.math.nus.edu.sg/aslaksen/calendar/chinese.html
+http://en.wikipedia.org/wiki/Chinese_calendar
+
+My code is in:
+http://code.google.com/p/kcalendar/
+http://kcalendar.googlecode.com/svn/trunk/
+
+cp kde4/kcalendarsystemchinese.h kde/src/KDE/kdelibs/kdecore/date
+cp kde4/kcalendarsystemchinese.cpp kde/src/KDE/kdelibs/kdecore/date
+cp kde4/kcalendarsystem.cpp kde/src/KDE/kdelibs/kdecore/date
+
+cp kde4/CMakeList.txt kde/src/KDE/kdelibs/kdecore
+
+And then build your kdelibs.
+
+You can try two examples in example/test, example/guitest.
+
+Some known issue or problem which you can help me:
+1. for virtual bool setDate( QDate &date, int year, int month, int day
+), what's it for? what's the difference between it with setYMD? Is it
+my understanding(in my current code) right or not?
+
+2. for epoch(), what's it?
+
+3. in my example/test, if I call weekStartDay(), it will crash, do you
+have any hints?
+
+4. Just because ccal has its own calculation function, a little slow,
+especially when using it with KDatePicker, then I choose to like ccal,
+embed a data table for 1950-2050 in it, now speed is ok. Maybe some
+one can optimize the code of ccal, or just for my case.
+
 代码主页：
 http://code.google.com/p/kcalendar/
 

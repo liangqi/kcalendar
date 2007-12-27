@@ -39,6 +39,20 @@ especially when using it with KDatePicker, then I choose to like ccal,
 embed a data table for 1950-2050 in it, now speed is ok. Maybe some
 one can optimize the code of ccal, or just for my case.
 
+Valid date:
+1645-1-28 -> 7303-2-5
+4342-1-1  -> 9999-12-30(Chinese Calendar)
+
+About the year difference between Gregorian and Chinese, I use 2697. 
+http://en.wikipedia.org/wiki/Chinese_calendar#Continuously-numbered_years
+
+snapshots:
+http://kcalendar.googlecode.com/svn/trunk/snapshot/chinese-calendar-kde4-1.png
+http://kcalendar.googlecode.com/svn/trunk/snapshot/chinese-calendar-kde4-2.png
+
+talks:
+http://lists.kde.org/?t=119817976300004
+
 代码主页：
 http://code.google.com/p/kcalendar/
 
@@ -94,16 +108,30 @@ real    0m7.976s
 user    0m7.792s
 sys     0m0.084s
 
-2007-12-20
-最新备注，已经加入1950-2050的缓存，guitest速度已经非常理想了。欢迎大家测试。
+有效日期：
+1645-1-28 -> 7303-2-5
+4342-1-1  -> 9999-12-30(Chinese Calendar)
+
+有关西历和农历的年份计算，我使用的是2697，请参考：
+http://en.wikipedia.org/wiki/Chinese_calendar#Continuously-numbered_years
+
+截屏:
+http://kcalendar.googlecode.com/svn/trunk/snapshot/chinese-calendar-kde4-1.png
+http://kcalendar.googlecode.com/svn/trunk/snapshot/chinese-calendar-kde4-2.png
 
 讨论方法：
+kde-core-devel邮件列表
+http://lists.kde.org/?t=119817976300004
+
 kde-china邮件列表
 http://mail.kde.org/mailman/listinfo/kde-china
 
 kde-cn irc
 irc://irc.freenode.net/#kde-cn
 
+2007-12-20
+最新备注，已经加入1950-2050的缓存，guitest速度已经非常理想了。欢迎大家测试。
+
 Liang Qi 齐亮
 cavendish.qi@gmail.com
-2007-12-20
+2007-12-27

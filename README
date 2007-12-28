@@ -53,6 +53,29 @@ http://kcalendar.googlecode.com/svn/trunk/snapshot/chinese-calendar-kde4-2.png
 talks:
 http://lists.kde.org/?t=119817976300004
 
+license issue:
+ccal - waiting for the reply of author
+
+NOVAS - got mail, the author said it's ok
+============================================
+From: George Kaplan [Contractor] <gkaplan@usno.navy.mil>
+To: Liang Qi <cavendish.qi@gmail.com>
+Date: 8 Nov 2007 19:36
+Subject: Re: about the license of NOVAS
+
+Dear Mr. Liang,
+
+The NOVAS software, both Fortran and C, is in the public domain.  That is,
+there is no license and you can use it freely.  We do ask that you
+acknowledge the U.S. Naval Observatory in any documentation,  papers, or
+other writing about any software that uses NOVAS.
+
+     George
+============================================
+
+Lunar Outreach Services - the author had relicensed his code
+http://www.packetgnomes.org/~chris/lunar/cgi-src/phases/
+
 代码主页：
 http://code.google.com/p/kcalendar/
 
@@ -129,9 +152,32 @@ http://mail.kde.org/mailman/listinfo/kde-china
 kde-cn irc
 irc://irc.freenode.net/#kde-cn
 
+版权问题：
+ccal - 正在等待作者回复
+
+NOVAS - 已经收到邮件，作者说没有问题
+============================================
+From: George Kaplan [Contractor] <gkaplan@usno.navy.mil>
+To: Liang Qi <cavendish.qi@gmail.com>
+Date: 8 Nov 2007 19:36
+Subject: Re: about the license of NOVAS
+
+Dear Mr. Liang,
+
+The NOVAS software, both Fortran and C, is in the public domain.  That is,
+there is no license and you can use it freely.  We do ask that you
+acknowledge the U.S. Naval Observatory in any documentation,  papers, or
+other writing about any software that uses NOVAS.
+
+     George
+============================================
+
+Lunar Outreach Services - 作者已经按LGPL重新发布代码了
+http://www.packetgnomes.org/~chris/lunar/cgi-src/phases/
+
 2007-12-20
 最新备注，已经加入1950-2050的缓存，guitest速度已经非常理想了。欢迎大家测试。
 
 Liang Qi 齐亮
 cavendish.qi@gmail.com
-2007-12-27
+2007-12-28

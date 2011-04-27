@@ -5,8 +5,10 @@ in or from East Asia, China, Korean, Japan and so on.
 
 I just based on the code of ccal and create KCalendarSystemChinese.
 And I read some docs on line:
-http://thunder.cwru.edu/ccal/index.html
-http://thunder.cwru.edu/ccal/rule.htm (in Chinese)
+http://thunder.cwru.edu/ccal/index.html(dead)
+http://thunder.cwru.edu/ccal/rule.htm (in Chinese)(dead)
+http://ccal.chinesebay.com/ccal/
+http://ccal.chinesebay.com/ccal/index.html.cn(in Chinese)
 http://www.math.nus.edu.sg/aslaksen/calendar/chinese.html
 http://en.wikipedia.org/wiki/Chinese_calendar
 
@@ -54,7 +56,46 @@ talks:
 http://lists.kde.org/?t=119817976300004
 
 license issue:
-ccal - waiting for the reply of author
+ccal - got mail, the author released ccal as LGPL too, from 2.4
+============================================
+From: Zhuo Meng <zhuo@thunder.EEAP.CWRU.Edu>
+To: Liang Qi <cavendish.qi@gmail.com>
+Date: Mon, 7 Jan 2008 11:23:33 -0500
+Subject: Re: hi, something about Chinese Calendar
+
+Hi, Liang,
+
+I rereleased 2.4 and replaced the license.
+
+Best,
+-Zhuo
+
+On Fri, Jan 04, 2008 at 12:11:52PM +0100, Liang Qi wrote:
+> Hi, Zhuo,
+>
+> I am ok about the files list. If you relicense all your code under
+> LGPL, I think that maybe someone else will be very happy.
+>
+> And could you put your LGPL ccal package on your website or somewhere else?
+>
+> Thanks a lot.
+>
+> Regards,
+> Liang
+>
+> On 04/01/2008, Zhuo Meng <zhuo@thunder.eeap.cwru.edu> wrote:
+> > Hi Liang,
+> >
+> > Glad to know that you settled the license issue for the lunar outreach
+> > code. I have no problem of relicense the part of the ccal that you use
+> > under LGPL. I suppose the files included will be all from NOVAS and
+> > Lunar Outreach and mphases.*, solarterm.*, lunaryear.* and yearcache.*.
+> >
+> > If you need additional files to be under LGPL, just let me know.
+> >
+> > Best,
+> > -Zhuo
+============================================
 
 NOVAS - got mail, the author said it's ok
 ============================================
@@ -153,24 +194,9 @@ kde-cn irc
 irc://irc.freenode.net/#kde-cn
 
 版权问题：
-ccal - 正在等待作者回复
+ccal - 已经收到邮件，作者以LGPL发布了ccal，从2.4版开始。邮件内容见上面英文部分。
 
-NOVAS - 已经收到邮件，作者说没有问题
-============================================
-From: George Kaplan [Contractor] <gkaplan@usno.navy.mil>
-To: Liang Qi <cavendish.qi@gmail.com>
-Date: 8 Nov 2007 19:36
-Subject: Re: about the license of NOVAS
-
-Dear Mr. Liang,
-
-The NOVAS software, both Fortran and C, is in the public domain.  That is,
-there is no license and you can use it freely.  We do ask that you
-acknowledge the U.S. Naval Observatory in any documentation,  papers, or
-other writing about any software that uses NOVAS.
-
-     George
-============================================
+NOVAS - 已经收到邮件，作者说没有问题。邮件内容见上面英文部分。
 
 Lunar Outreach Services - 作者已经按LGPL重新发布代码了
 http://www.packetgnomes.org/~chris/lunar/cgi-src/phases/
@@ -178,6 +204,9 @@ http://www.packetgnomes.org/~chris/lunar/cgi-src/phases/
 2007-12-20
 最新备注，已经加入1950-2050的缓存，guitest速度已经非常理想了。欢迎大家测试。
 
+2011-04-27
+更新了一些链接和协议内容。
+
 Liang Qi 齐亮
 cavendish.qi@gmail.com
-2007-12-28
+2011-04-27

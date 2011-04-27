@@ -56,7 +56,7 @@ talks:
 http://lists.kde.org/?t=119817976300004
 
 license issue:
-ccal - got mail, the author released ccal as LGPL too, from 2.4
+ccal - got mail, the author released part of ccal as LGPL too, from 2.4
 ============================================
 From: Zhuo Meng <zhuo@thunder.EEAP.CWRU.Edu>
 To: Liang Qi <cavendish.qi@gmail.com>
@@ -95,6 +95,14 @@ On Fri, Jan 04, 2008 at 12:11:52PM +0100, Liang Qi wrote:
 > >
 > > Best,
 > > -Zhuo
+============================================
+README in ccal 2.5.2:
+
+Portions related to
+computing of Chinese dates are distributed under the terms of the GNU
+Less General Public License as published by the Free Software
+Foundation; either version 2 of the License, or (at your option)
+any later version.
 ============================================
 
 NOVAS - got mail, the author said it's ok

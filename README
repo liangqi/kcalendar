@@ -5,16 +5,15 @@ in or from East Asia, China, Korean, Japan and so on.
 
 I just based on the code of ccal and create KCalendarSystemChinese.
 And I read some docs on line:
-http://thunder.cwru.edu/ccal/index.html(dead)
+http://thunder.cwru.edu/ccal/index.html (dead)
 http://thunder.cwru.edu/ccal/rule.htm (in Chinese)(dead)
 http://ccal.chinesebay.com/ccal/
-http://ccal.chinesebay.com/ccal/index.html.cn(in Chinese)
+http://ccal.chinesebay.com/ccal/index.html.cn (in Chinese)
 http://www.math.nus.edu.sg/aslaksen/calendar/chinese.html
 http://en.wikipedia.org/wiki/Chinese_calendar
 
 My code is in:
-http://code.google.com/p/kcalendar/
-http://kcalendar.googlecode.com/svn/trunk/
+https://github.com/liangqi/kcalendar
 
 cp kde4/kcalendarsystemchinese.h kde/src/KDE/kdelibs/kdecore/date
 cp kde4/kcalendarsystemchinese.cpp kde/src/KDE/kdelibs/kdecore/date
@@ -122,11 +121,28 @@ other writing about any software that uses NOVAS.
      George
 ============================================
 
+============================================
+
 Lunar Outreach Services - the author had relicensed his code
-http://www.packetgnomes.org/~chris/lunar/cgi-src/phases/
+============================================
+From: co149@mac.com
+Date: 18 Feb 2014 16:03
+To: Liang Qi <cavendish.qi@gmail.com>
+Subject: Re: can't access the code of Lunar Outreach Services
+
+Hi Liang--
+
+I added the LGPL text to the sources, so you should be good to go.
+
+Best,
+Chris
+============================================
+http://www.packetgnomes.org/~chris/lunar/cgi-src/phases/ (old, dead)
+http://www.muppetlabs.com/~chris/lunar/cgi-src/phases/
+Backup: https://github.com/liangqi/phases/
 
 代码主页：
-http://code.google.com/p/kcalendar/
+https://github.com/liangqi/kcalendar
 
 KDE 4.0已经非常临近了，但非常遗憾的是KDE系统中一直没有面向中国以及东亚用户使用的农历。
 
@@ -194,6 +210,7 @@ http://kcalendar.googlecode.com/svn/trunk/snapshot/chinese-calendar-kde4-2.png
 讨论方法：
 kde-core-devel邮件列表
 http://lists.kde.org/?t=119817976300004
+http://lists.kde.org/?t=128937569200001
 
 kde-china邮件列表
 http://mail.kde.org/mailman/listinfo/kde-china
@@ -207,7 +224,9 @@ ccal - 已经收到邮件，作者以LGPL发布了ccal，从2.4版开始。邮�
 NOVAS - 已经收到邮件，作者说没有问题。邮件内容见上面英文部分。
 
 Lunar Outreach Services - 作者已经按LGPL重新发布代码了
-http://www.packetgnomes.org/~chris/lunar/cgi-src/phases/
+http://www.packetgnomes.org/~chris/lunar/cgi-src/phases/ (old, dead)
+http://www.muppetlabs.com/~chris/lunar/cgi-src/phases/
+备份: https://github.com/liangqi/phases/
 
 2007-12-20
 最新备注，已经加入1950-2050的缓存，guitest速度已经非常理想了。欢迎大家测试。
@@ -217,4 +236,3 @@ http://www.packetgnomes.org/~chris/lunar/cgi-src/phases/
 
 Liang Qi 齐亮
 cavendish.qi@gmail.com
-2011-04-27
